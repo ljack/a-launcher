@@ -4,6 +4,7 @@ import android.content.Context
 import com.alauncher.data.db.ALauncherDatabase
 import com.alauncher.data.db.AppDao
 import com.alauncher.data.db.UsageDao
+import com.alauncher.data.db.MediaHistoryDao
 import com.alauncher.data.db.PositionDao
 import dagger.Module
 import dagger.Provides
@@ -30,4 +31,7 @@ object AppModule {
 
     @Provides
     fun providePositionDao(db: ALauncherDatabase): PositionDao = db.positionDao()
+
+    @Provides
+    fun provideMediaHistoryDao(db: ALauncherDatabase): MediaHistoryDao = db.mediaHistoryDao()
 }

@@ -10,14 +10,16 @@ import androidx.room.RoomDatabase
         AppEntity::class,
         UsageEventEntity::class,
         AppPositionEntity::class,
+        MediaHistoryEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class ALauncherDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
     abstract fun usageDao(): UsageDao
     abstract fun positionDao(): PositionDao
+    abstract fun mediaHistoryDao(): MediaHistoryDao
 
     companion object {
         fun create(context: Context): ALauncherDatabase {
@@ -25,7 +27,8 @@ abstract class ALauncherDatabase : RoomDatabase() {
                 context.applicationContext,
                 ALauncherDatabase::class.java,
                 "alauncher.db"
-            ).build()
+            ).fallbackToDestructiveMigration()
+            .build()
         }
     }
 }

@@ -5,10 +5,14 @@ import android.content.Context
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import com.alauncher.data.db.MediaHistoryDao
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,7 +23,10 @@ import javax.inject.Singleton
 @Singleton
 class MediaSessionMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val mediaHistoryDao: MediaHistoryDao,
 ) {
+    private val scope = CoroutineScope(Dispatchers.IO)
+    private var lastLoggedTrack: String? = null // "title|artist|pkg" to avoid duplicate logs
     private val sessionManager: MediaSessionManager? =
         context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
 
@@ -33,6 +40,22 @@ class MediaSessionMonitor @Inject constructor(
 
         fun emitCurrentState() {
             val state = buildMediaState(getActiveSessions(listenerComponent))
+            // Log track to history when it changes
+            state.activeSource?.let { source ->
+                val trackKey = "${source.title}|${source.artist}|${source.packageName}"
+                if (source.title != null && trackKey != lastLoggedTrack && source.isPlaying) {
+                    lastLoggedTrack = trackKey
+                    scope.launch {
+                        mediaHistoryDao.logPlay(
+                            title = source.title,
+                            artist = source.artist,
+                            album = source.album,
+                            packageName = source.packageName,
+                            durationMs = source.durationMs,
+                        )
+                    }
+                }
+            }
             trySend(state)
         }
 
