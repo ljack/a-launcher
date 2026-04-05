@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,7 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,7 +48,7 @@ import com.alauncher.ui.theme.TextPrimary
 import com.alauncher.ui.theme.TextSecondary
 
 /**
- * Media Control Hub — shows at the top of the launcher when media is playing.
+ * Media Control Hub — liquid glass pill at the top of the launcher.
  * Compact indicator when collapsed, full controls when expanded.
  */
 @Composable
@@ -62,10 +61,31 @@ fun MediaHub(
     var expanded by remember { mutableStateOf(false) }
     val source = mediaState.activeSource ?: return
 
+    val pillShape = RoundedCornerShape(22.dp)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(pillShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.05f),
+                    )
+                )
+            )
+            .border(
+                width = 0.5.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.25f),
+                        Color.White.copy(alpha = 0.06f),
+                    )
+                ),
+                shape = pillShape,
+            )
     ) {
         // Collapsed: compact indicator
         CompactMediaIndicator(
@@ -73,6 +93,20 @@ fun MediaHub(
             sourceCount = mediaState.allSources.size,
             onClick = { expanded = !expanded },
         )
+
+        // Progress bar
+        if (source.durationMs != null && source.durationMs > 0) {
+            LinearProgressIndicator(
+                progress = { source.progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp)),
+                color = Color.White.copy(alpha = 0.5f),
+                trackColor = Color.White.copy(alpha = 0.08f),
+            )
+        }
 
         // Expanded: full controls
         AnimatedVisibility(
@@ -109,15 +143,6 @@ private fun CompactMediaIndicator(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        OrbGlow.copy(alpha = 0.15f),
-                        OrbGlowSecondary.copy(alpha = 0.1f),
-                    )
-                )
-            )
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
@@ -126,7 +151,10 @@ private fun CompactMediaIndicator(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (source.isPlaying) OrbGlowSecondary else OrbGlow)
+                .background(
+                    if (source.isPlaying) Color(0xFF40E0D0)
+                    else Color.White.copy(alpha = 0.5f)
+                )
         )
 
         Spacer(Modifier.width(12.dp))
@@ -135,7 +163,7 @@ private fun CompactMediaIndicator(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = source.title ?: "Unknown",
-                color = TextPrimary,
+                color = Color.White.copy(alpha = 0.9f),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -148,7 +176,7 @@ private fun CompactMediaIndicator(
                         append(" · ${formatDuration(ms)} left")
                     }
                 },
-                color = TextSecondary,
+                color = Color.White.copy(alpha = 0.55f),
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -160,7 +188,7 @@ private fun CompactMediaIndicator(
             onClick = { source.skipPrev() },
             modifier = Modifier.size(32.dp),
         ) {
-            Text("⏮", fontSize = 14.sp)
+            Text("⏮", fontSize = 14.sp, color = Color.White.copy(alpha = 0.7f))
         }
         IconButton(
             onClick = { source.togglePlayPause() },
@@ -169,13 +197,14 @@ private fun CompactMediaIndicator(
             Text(
                 text = if (source.isPlaying) "⏸" else "▶",
                 fontSize = 18.sp,
+                color = Color.White.copy(alpha = 0.85f),
             )
         }
         IconButton(
             onClick = { source.skipNext() },
             modifier = Modifier.size(32.dp),
         ) {
-            Text("⏭", fontSize = 14.sp)
+            Text("⏭", fontSize = 14.sp, color = Color.White.copy(alpha = 0.7f))
         }
 
         // Source count badge
@@ -184,32 +213,19 @@ private fun CompactMediaIndicator(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(22.dp)
                     .clip(CircleShape)
-                    .background(OrbGlow.copy(alpha = 0.3f)),
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.2f), CircleShape),
             ) {
                 Text(
                     text = "$sourceCount",
-                    color = TextPrimary,
+                    color = Color.White.copy(alpha = 0.8f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
         }
-    }
-
-    // Progress bar
-    if (source.durationMs != null && source.durationMs > 0) {
-        LinearProgressIndicator(
-            progress = { source.progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp)),
-            color = OrbGlowSecondary,
-            trackColor = OrbGlow.copy(alpha = 0.15f),
-        )
     }
 }
 
@@ -221,25 +237,16 @@ private fun ExpandedMediaControls(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        OrbGlow.copy(alpha = 0.1f),
-                        Color.Transparent,
-                    )
-                )
-            )
-            .padding(12.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         // Source switcher — show all active media apps
         if (state.allSources.size > 1) {
             Text(
-                text = "Sources",
-                color = TextSecondary,
+                text = "SOURCES",
+                color = Color.White.copy(alpha = 0.4f),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
                 modifier = Modifier.padding(bottom = 6.dp),
             )
 
@@ -254,12 +261,17 @@ private fun ExpandedMediaControls(
                         source.packageName
                     }
                 }
+                val isActive = source == state.activeSource
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(10.dp))
+                        .then(
+                            if (isActive) Modifier.background(Color.White.copy(alpha = 0.06f))
+                            else Modifier
+                        )
                         .clickable { onSourceSelected(source) }
                         .padding(vertical = 6.dp, horizontal = 8.dp),
                 ) {
@@ -268,22 +280,22 @@ private fun ExpandedMediaControls(
                             .size(6.dp)
                             .clip(CircleShape)
                             .background(
-                                if (source == state.activeSource) OrbGlowSecondary
-                                else TextSecondary.copy(alpha = 0.3f)
+                                if (isActive) Color(0xFF40E0D0)
+                                else Color.White.copy(alpha = 0.2f)
                             )
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,
-                            color = if (source == state.activeSource) TextPrimary else TextSecondary,
+                            color = Color.White.copy(alpha = if (isActive) 0.9f else 0.5f),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                         )
                         source.title?.let {
                             Text(
                                 text = it,
-                                color = TextSecondary,
+                                color = Color.White.copy(alpha = 0.4f),
                                 fontSize = 10.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -293,7 +305,7 @@ private fun ExpandedMediaControls(
                     Text(
                         text = if (source.isPlaying) "▶" else "⏸",
                         fontSize = 12.sp,
-                        color = TextSecondary,
+                        color = Color.White.copy(alpha = 0.4f),
                     )
                 }
             }
