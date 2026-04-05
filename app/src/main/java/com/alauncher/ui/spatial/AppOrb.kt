@@ -128,8 +128,8 @@ fun AppOrb(
                 }
             }
         }
-        // Label — hide on very outer rings or when zoomed out
-        if (ringIndex < 18 && scale > 0.35f) {
+        // Label — hide only when zoomed out significantly
+        if (scale > 0.3f) {
             Text(
                 text = app.label,
                 style = MaterialTheme.typography.labelSmall.copy(
