@@ -89,7 +89,7 @@ fun SpatialField(
     magnifyState: MagnifyState? = null,
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
-    var scale by remember { mutableFloatStateOf(1f) }
+    var scale by remember { mutableFloatStateOf(0.2f) }
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     var lastTapTime by remember { mutableStateOf(0L) }
 

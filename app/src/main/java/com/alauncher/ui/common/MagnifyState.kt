@@ -25,10 +25,10 @@ class MagnifyState {
     var dragging by mutableStateOf(false)
 
     /** Lens radius in pixels */
-    var radiusPx by mutableFloatStateOf(330f)
+    var radiusPx by mutableFloatStateOf(550f)
 
     /** Base radius (before pinch-resize) */
-    private val baseRadiusPx = 330f
+    private val baseRadiusPx = 550f
     private val minRadiusPx = 200f
     private val maxRadiusPx = 550f
 
