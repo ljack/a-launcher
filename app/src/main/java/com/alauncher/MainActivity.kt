@@ -33,11 +33,11 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        // Prompt once on first launch if not granted
-        if (!hasPromptedNotificationAccess && !isNotificationListenerEnabled()) {
-            hasPromptedNotificationAccess = true
-            openNotificationListenerSettings()
-        }
+        // Don't auto-prompt — user already granted access
+        // if (!hasPromptedNotificationAccess && !isNotificationListenerEnabled()) {
+        //     hasPromptedNotificationAccess = true
+        //     openNotificationListenerSettings()
+        // }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

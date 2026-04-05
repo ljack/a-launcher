@@ -26,10 +26,11 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /**
- * Aqua tint color — deep ocean teal.
+ * Liquid glass tint colors.
  */
-val AquaTint = Color(0xFF0A2E3D)
-val AquaEdge = OrbGlowSecondary.copy(alpha = 0.3f)
+val GlassTint = Color(0xFF122838)      // Dark teal glass base
+val GlassHighlight = Color(0xFFA0D8E8) // Bright refraction highlight
+val GlassEdge = Color(0xFF70E0F0)      // Bright edge glow
 
 /**
  * Draws an aqua/underwater overlay with a wavy edge.
@@ -122,20 +123,38 @@ private fun DrawScope.drawAquaBackground(
         }
     }
 
-    // Main aqua fill
+    // Layer 1: Glass tint base
     drawPath(
         path = path,
         brush = Brush.verticalGradient(
             colors = when (waveEdge) {
                 WaveEdge.Bottom -> listOf(
-                    AquaTint.copy(alpha = alpha),
-                    AquaTint.copy(alpha = alpha * 0.85f),
-                    AquaTint.copy(alpha = alpha * 0.5f),
+                    GlassTint.copy(alpha = alpha * 0.85f),
+                    GlassTint.copy(alpha = alpha * 0.6f),
+                    GlassTint.copy(alpha = alpha * 0.15f),
                 )
                 WaveEdge.Top -> listOf(
-                    AquaTint.copy(alpha = alpha * 0.5f),
-                    AquaTint.copy(alpha = alpha * 0.85f),
-                    AquaTint.copy(alpha = alpha),
+                    GlassTint.copy(alpha = alpha * 0.15f),
+                    GlassTint.copy(alpha = alpha * 0.6f),
+                    GlassTint.copy(alpha = alpha * 0.85f),
+                )
+            }
+        ),
+    )
+    // Layer 2: Glass highlight — bright refraction at the solid edge
+    drawPath(
+        path = path,
+        brush = Brush.verticalGradient(
+            colors = when (waveEdge) {
+                WaveEdge.Bottom -> listOf(
+                    GlassHighlight.copy(alpha = alpha * 0.15f),
+                    GlassHighlight.copy(alpha = alpha * 0.04f),
+                    Color.Transparent,
+                )
+                WaveEdge.Top -> listOf(
+                    Color.Transparent,
+                    GlassHighlight.copy(alpha = alpha * 0.04f),
+                    GlassHighlight.copy(alpha = alpha * 0.15f),
                 )
             }
         ),
@@ -165,7 +184,7 @@ private fun DrawScope.drawAquaBackground(
 
     drawPath(
         path = edgePath,
-        color = AquaEdge,
+        color = GlassEdge.copy(alpha = 0.6f),
         style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f),
     )
 }
