@@ -1,5 +1,6 @@
 package com.alauncher.ui.screen
 
+import android.graphics.RenderEffect
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -30,7 +31,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.alauncher.ui.common.AquaZone
 import com.alauncher.ui.common.WaveEdge
+import com.alauncher.ui.common.createMagnifyEffect
 import com.alauncher.ui.common.createRefractionEffect
+import com.alauncher.ui.common.rememberMagnifyState
 import com.alauncher.ui.media.MediaHub
 import com.alauncher.ui.search.SearchOverlay
 import com.alauncher.ui.search.SearchTrigger
@@ -39,9 +42,12 @@ import com.alauncher.ui.spatial.SpatialField
 /**
  * Main home screen of the launcher.
  *
- * Snell-Descartes refraction shader distorts the spatial field
- * in the aqua glass zones, creating realistic underwater/glass effect.
- * Liquid glass tint overlays on top for the frosted look.
+ * Layers:
+ * 1. SpatialField — app orbs with glow/connections
+ * 2. Refraction shader — Snell-Descartes for glass zones
+ * 3. Magnify shader — liquid glass lens (when active)
+ * 4. Aqua overlays — glass tint for media hub + search
+ * 5. UI overlays — media hub, search trigger, search overlay
  */
 @Composable
 fun HomeScreen(
@@ -58,6 +64,8 @@ fun HomeScreen(
     var bottomZoneHeight by remember { mutableIntStateOf(0) }
     var totalWidth by remember { mutableIntStateOf(0) }
     var totalHeight by remember { mutableIntStateOf(0) }
+
+    val magnifyState = rememberMagnifyState()
 
     // Animation time for the refraction wave
     val infiniteTransition = rememberInfiniteTransition(label = "refraction")
@@ -86,37 +94,48 @@ fun HomeScreen(
                 modifier = Modifier.align(Alignment.Center),
             )
         } else {
-            // Spatial field — refraction shader applied when not dragging
-            // (configurable: refractionEnabled)
-            val refractionEnabled = true
+            // Spatial field with combined shader effects
             SpatialField(
                 apps = uiState.apps,
                 onAppTap = { app -> viewModel.launchApp(app) },
+                magnifyState = magnifyState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (refractionEnabled) Modifier.graphicsLayer {
-                            if (totalWidth > 0 && totalHeight > 0 &&
-                                (topZoneHeight > 0 || bottomZoneHeight > 0)
-                            ) {
-                                val effect = createRefractionEffect(
-                                    width = totalWidth.toFloat(),
-                                    height = totalHeight.toFloat(),
-                                    time = refractionTime,
-                                    topZoneEnd = topZoneHeight.toFloat(),
-                                    bottomZoneStart = (totalHeight - bottomZoneHeight).toFloat(),
-                                    refractiveIndex = 1.33f,
-                                    waveAmplitude = 12f,
-                                    waveFrequency = 3f,
-                                    edgeHeight = 45f,
-                                    edgeWidth = 140f,
-                                )
-                                if (effect != null) {
-                                    renderEffect = effect.asComposeRenderEffect()
-                                }
-                            }
-                        } else Modifier
-                    ),
+                    .graphicsLayer {
+                        if (totalWidth <= 0 || totalHeight <= 0) return@graphicsLayer
+
+                        val w = totalWidth.toFloat()
+                        val h = totalHeight.toFloat()
+
+                        // Magnify shader takes priority when active
+                        val effect = if (magnifyState.active) {
+                            createMagnifyEffect(
+                                width = w, height = h,
+                                centerX = magnifyState.center.x,
+                                centerY = magnifyState.center.y,
+                                radius = magnifyState.radiusPx,
+                                magnification = magnifyState.magnification,
+                                edgeWidth = 35f,
+                                refractiveIndex = 1.5f,
+                            )
+                        } else if (topZoneHeight > 0 || bottomZoneHeight > 0) {
+                            createRefractionEffect(
+                                width = w, height = h,
+                                time = refractionTime,
+                                topZoneEnd = topZoneHeight.toFloat(),
+                                bottomZoneStart = (totalHeight - bottomZoneHeight).toFloat(),
+                                refractiveIndex = 1.33f,
+                                waveAmplitude = 12f,
+                                waveFrequency = 3f,
+                                edgeHeight = 45f,
+                                edgeWidth = 140f,
+                            )
+                        } else null
+
+                        if (effect != null) {
+                            renderEffect = effect.asComposeRenderEffect()
+                        }
+                    },
             )
 
             // Liquid glass overlays

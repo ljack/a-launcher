@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.alauncher.data.model.LauncherApp
+import com.alauncher.ui.common.MagnifyState
 import com.alauncher.ui.theme.OrbGlow
 import com.alauncher.ui.theme.OrbGlowSecondary
 import kotlin.math.PI
@@ -85,6 +86,7 @@ fun SpatialField(
     onAppTap: (LauncherApp) -> Unit,
     modifier: Modifier = Modifier,
     interactive: Boolean = true,
+    magnifyState: MagnifyState? = null,
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
@@ -135,16 +137,36 @@ fun SpatialField(
             .onSizeChanged { fieldSize = it }
             .then(
                 if (!interactive) Modifier
-                else Modifier.pointerInput(apps) {
+                else Modifier.pointerInput(apps, magnifyState) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
                         val downPos = firstDown.position
+                        val downTime = System.currentTimeMillis()
                         var gestureStarted = false
                         var isMultiTouch = false
+                        var isMagnifyDrag = false
+                        var magnifyActivated = false
+
+                        // Check if tap is inside an active (non-dragging) magnify lens
+                        val mag = magnifyState
+                        val tappedInsideLens = mag != null && mag.active && !mag.dragging &&
+                            hypot(downPos.x - mag.center.x, downPos.y - mag.center.y) < mag.radiusPx
+
+                        if (tappedInsideLens && mag != null) {
+                            // Re-grab the lens to move it
+                            mag.dragging = true
+                            isMagnifyDrag = true
+                            magnifyActivated = true
+                        }
+
+                        // Check if tap is outside an active lens → dismiss
+                        val tappedOutsideLens = mag != null && mag.active && !mag.dragging &&
+                            hypot(downPos.x - mag.center.x, downPos.y - mag.center.y) >= mag.radiusPx
 
                         do {
                             val event = awaitPointerEvent()
                             val pointers = event.changes
+                            val elapsed = System.currentTimeMillis() - downTime
 
                             if (pointers.size >= 2) isMultiTouch = true
 
@@ -153,12 +175,20 @@ fun SpatialField(
                                 if (activePointers >= 2) {
                                     val zoom = event.calculateZoom()
                                     val pan = event.calculatePan()
-                                    val centroid = event.calculateCentroid()
 
-                                    if (zoom in 0.5f..2.0f) {
+                                    // If magnify is active, pinch adjusts magnification
+                                    if (mag != null && mag.active && zoom in 0.5f..2.0f) {
+                                        mag.adjustMagnification(zoom)
+                                        if (mag.magnification <= 1.5f) {
+                                            mag.dismiss()
+                                        }
+                                        gestureStarted = true
+                                        pointers.forEach { it.consume() }
+                                    } else if (zoom in 0.5f..2.0f) {
                                         val oldScale = scale
                                         val newScale = (oldScale * zoom).coerceIn(0.2f, 5f)
                                         val scaleDelta = newScale / oldScale
+                                        val centroid = event.calculateCentroid()
                                         val cx = fieldSize.width / 2f
                                         val cy = fieldSize.height / 2f
                                         panOffset = Offset(
@@ -167,33 +197,68 @@ fun SpatialField(
                                         )
                                         scale = newScale
                                         panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                        gestureStarted = true
+                                        pointers.forEach { it.consume() }
                                     } else {
                                         panOffset += pan
                                         panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                        gestureStarted = true
+                                        pointers.forEach { it.consume() }
                                     }
                                 } else if (activePointers == 1) {
                                     panOffset += event.calculatePan()
+                                    gestureStarted = true
+                                    pointers.forEach { it.consume() }
                                 }
-                                gestureStarted = true
-                                pointers.forEach { it.consume() }
                             } else if (pointers.size == 1) {
                                 val change = pointers[0]
                                 val dragDelta = change.position - downPos
-                                if (abs(dragDelta.x) > 15f || abs(dragDelta.y) > 15f) {
-                                    gestureStarted = true
-                                }
-                                if (gestureStarted) {
-                                    panOffset += event.calculatePan()
-                                    panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                val totalDrag = hypot(dragDelta.x, dragDelta.y)
+
+                                // Long-press detection: >300ms with <15px movement
+                                if (!magnifyActivated && !gestureStarted &&
+                                    mag != null && elapsed > 300 && totalDrag < 15f
+                                ) {
+                                    mag.activate(change.position)
+                                    magnifyActivated = true
+                                    isMagnifyDrag = true
                                     change.consume()
+                                }
+
+                                if (isMagnifyDrag && mag != null) {
+                                    // Dragging the magnify lens
+                                    mag.moveTo(change.position)
+                                    change.consume()
+                                } else if (!magnifyActivated) {
+                                    // Normal pan
+                                    if (totalDrag > 15f) {
+                                        gestureStarted = true
+                                    }
+                                    if (gestureStarted) {
+                                        panOffset += event.calculatePan()
+                                        panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                        change.consume()
+                                    }
                                 }
                             }
                         } while (pointers.any { it.pressed })
 
                         panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
 
-                        // Tap detection
-                        if (!gestureStarted && !isMultiTouch && fieldSize.width > 0) {
+                        // Release magnify drag (lens stays visible)
+                        if (isMagnifyDrag && mag != null) {
+                            mag.release()
+                            return@awaitEachGesture
+                        }
+
+                        // Tap outside lens → dismiss
+                        if (tappedOutsideLens && !gestureStarted && mag != null) {
+                            mag.dismiss()
+                            return@awaitEachGesture
+                        }
+
+                        // Tap detection (normal)
+                        if (!gestureStarted && !isMultiTouch && !magnifyActivated && fieldSize.width > 0) {
                             val now = System.currentTimeMillis()
                             if (now - lastTapTime < 300L) {
                                 scale = 1f
