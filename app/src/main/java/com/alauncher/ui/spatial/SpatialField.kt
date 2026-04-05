@@ -175,13 +175,21 @@ fun SpatialField(
                         }
                     } while (pointers.any { it.pressed })
 
-                    // Clamp pan so content can't drift completely off-screen
+                    // Clamp pan to keep content visible
                     if (rawPositions.isNotEmpty()) {
-                        val maxRadius = spreadFactor * sqrt(rawPositions.size.toFloat()) * scale
-                        val maxPan = maxRadius + fieldSize.width * 0.3f
+                        // The spiral's radius in screen pixels at current scale
+                        val contentRadius = spreadFactor * sqrt(rawPositions.size.toFloat()) * scale
+                        // How much of the screen the content covers
+                        val screenW = fieldSize.width.toFloat()
+                        val screenH = fieldSize.height.toFloat()
+
+                        // When content is smaller than screen, keep it centered
+                        // When content is larger, allow panning but keep edges visible
+                        val maxPanX = (contentRadius - screenW / 2f).coerceAtLeast(0f)
+                        val maxPanY = (contentRadius - screenH / 2f).coerceAtLeast(0f)
                         panOffset = Offset(
-                            x = panOffset.x.coerceIn(-maxPan, maxPan),
-                            y = panOffset.y.coerceIn(-maxPan, maxPan),
+                            x = panOffset.x.coerceIn(-maxPanX, maxPanX),
+                            y = panOffset.y.coerceIn(-maxPanY, maxPanY),
                         )
                     }
 
