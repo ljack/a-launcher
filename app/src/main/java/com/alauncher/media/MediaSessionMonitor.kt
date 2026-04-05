@@ -9,7 +9,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,66 +23,68 @@ class MediaSessionMonitor @Inject constructor(
     private val sessionManager: MediaSessionManager? =
         context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
 
-    /**
-     * Observe active media sessions as [MediaState] updates.
-     * Falls back to empty state if notification listener permission not granted.
-     */
     fun observeMediaState(): Flow<MediaState> = callbackFlow {
-        val listenerComponent = ComponentName(context, "com.alauncher.notification.NotificationCaptureService")
+        val listenerComponent = ComponentName(
+            context, "com.alauncher.notification.NotificationCaptureService"
+        )
 
-        val listener = object : MediaSessionManager.OnActiveSessionsChangedListener {
-            override fun onActiveSessionsChanged(controllers: MutableList<MediaController>?) {
-                val state = buildMediaState(controllers)
-                trySend(state)
-                // Register per-controller callbacks for playback changes
-                controllers?.forEach { controller ->
-                    controller.registerCallback(object : MediaController.Callback() {
-                        override fun onPlaybackStateChanged(playbackState: PlaybackState?) {
-                            val updated = buildMediaState(getActiveSessions(listenerComponent))
-                            trySend(updated)
-                        }
+        // Track registered callbacks so we can unregister them
+        val activeCallbacks = mutableMapOf<MediaController, MediaController.Callback>()
 
-                        override fun onMetadataChanged(metadata: android.media.MediaMetadata?) {
-                            val updated = buildMediaState(getActiveSessions(listenerComponent))
-                            trySend(updated)
-                        }
-                    })
-                }
-            }
+        fun emitCurrentState() {
+            val state = buildMediaState(getActiveSessions(listenerComponent))
+            trySend(state)
         }
 
-        // Initial state
-        try {
-            val controllers = getActiveSessions(listenerComponent)
-            trySend(buildMediaState(controllers))
+        fun unregisterAllCallbacks() {
+            activeCallbacks.forEach { (controller, callback) ->
+                try {
+                    controller.unregisterCallback(callback)
+                } catch (_: Exception) {}
+            }
+            activeCallbacks.clear()
+        }
 
-            sessionManager?.addOnActiveSessionsChangedListener(listener, listenerComponent)
-
-            // Also register callbacks on initial controllers
+        fun registerCallbacksOn(controllers: List<MediaController>?) {
+            unregisterAllCallbacks()
             controllers?.forEach { controller ->
-                controller.registerCallback(object : MediaController.Callback() {
+                val callback = object : MediaController.Callback() {
                     override fun onPlaybackStateChanged(playbackState: PlaybackState?) {
-                        val updated = buildMediaState(getActiveSessions(listenerComponent))
-                        trySend(updated)
+                        emitCurrentState()
                     }
 
                     override fun onMetadataChanged(metadata: android.media.MediaMetadata?) {
-                        val updated = buildMediaState(getActiveSessions(listenerComponent))
-                        trySend(updated)
+                        emitCurrentState()
                     }
-                })
+                }
+                controller.registerCallback(callback)
+                activeCallbacks[controller] = callback
             }
+        }
+
+        val sessionListener = object : MediaSessionManager.OnActiveSessionsChangedListener {
+            override fun onActiveSessionsChanged(controllers: MutableList<MediaController>?) {
+                registerCallbacksOn(controllers)
+                emitCurrentState()
+            }
+        }
+
+        try {
+            val controllers = getActiveSessions(listenerComponent)
+            registerCallbacksOn(controllers)
+            emitCurrentState()
+            sessionManager?.addOnActiveSessionsChangedListener(sessionListener, listenerComponent)
         } catch (e: SecurityException) {
-            // NotificationListener not enabled — emit empty state
             trySend(MediaState())
         }
 
         awaitClose {
+            unregisterAllCallbacks()
             try {
-                sessionManager?.removeOnActiveSessionsChangedListener(listener)
+                sessionManager?.removeOnActiveSessionsChangedListener(sessionListener)
             } catch (_: Exception) {}
         }
-    }.distinctUntilChanged()
+    }
 
     private fun getActiveSessions(component: ComponentName): List<MediaController>? {
         return try {
@@ -124,18 +125,12 @@ class MediaSessionMonitor @Inject constructor(
     }
 }
 
-/**
- * Represents current media playback state across all sources.
- */
 data class MediaState(
     val hasMedia: Boolean = false,
     val activeSource: MediaSource? = null,
     val allSources: List<MediaSource> = emptyList(),
 )
 
-/**
- * Represents a single media source (app).
- */
 data class MediaSource(
     val packageName: String,
     val title: String?,
