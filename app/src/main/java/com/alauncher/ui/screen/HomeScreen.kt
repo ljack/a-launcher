@@ -80,7 +80,8 @@ fun HomeScreen(
             if (topZoneHeight > 0 || bottomZoneHeight > 0) {
                 SpatialField(
                     apps = uiState.apps,
-                    onAppTap = { }, // non-interactive, just visual
+                    onAppTap = { },
+                    interactive = false,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {

@@ -88,6 +88,7 @@ fun SpatialField(
     apps: List<LauncherApp>,
     onAppTap: (LauncherApp) -> Unit,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
@@ -137,6 +138,7 @@ fun SpatialField(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { fieldSize = it }
+            .then(if (!interactive) Modifier else Modifier
             .pointerInput(apps) {
                 awaitEachGesture {
                     val firstDown = awaitFirstDown(requireUnconsumed = false)
@@ -249,7 +251,7 @@ fun SpatialField(
                         }
                     }
                 }
-            }
+            })
     ) {
         if (fieldSize.width > 0 && fieldSize.height > 0) {
             val centerX = fieldSize.width / 2f
