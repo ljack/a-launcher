@@ -122,25 +122,39 @@ fun SpatialField(
                         }
 
                         if (isMultiTouch) {
-                            // Pinch-to-zoom anchored to pinch centroid + pan
-                            val zoom = event.calculateZoom()
-                            val pan = event.calculatePan()
-                            val centroid = event.calculateCentroid()
+                            // Only process zoom when 2+ fingers are actually down
+                            // This prevents wild values when one finger lifts first
+                            val activePointers = pointers.count { it.pressed }
 
-                            val oldScale = scale
-                            val newScale = (oldScale * zoom).coerceIn(0.15f, 5f)
-                            val scaleDelta = newScale / oldScale
+                            if (activePointers >= 2) {
+                                val zoom = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                val centroid = event.calculateCentroid()
 
-                            // Anchor zoom to pinch centroid:
-                            // Offset the pan so the point under the centroid stays fixed
-                            val cx = fieldSize.width / 2f
-                            val cy = fieldSize.height / 2f
-                            panOffset = Offset(
-                                x = centroid.x - cx + (panOffset.x - centroid.x + cx) * scaleDelta + pan.x,
-                                y = centroid.y - cy + (panOffset.y - centroid.y + cy) * scaleDelta + pan.y,
-                            )
+                                // Guard: ignore extreme per-frame zoom spikes
+                                if (zoom in 0.5f..2.0f) {
+                                    val oldScale = scale
+                                    val newScale = (oldScale * zoom).coerceIn(0.2f, 5f)
+                                    val scaleDelta = newScale / oldScale
 
-                            scale = newScale
+                                    // Anchor zoom to pinch centroid
+                                    val cx = fieldSize.width / 2f
+                                    val cy = fieldSize.height / 2f
+                                    panOffset = Offset(
+                                        x = centroid.x - cx + (panOffset.x - centroid.x + cx) * scaleDelta + pan.x,
+                                        y = centroid.y - cy + (panOffset.y - centroid.y + cy) * scaleDelta + pan.y,
+                                    )
+
+                                    scale = newScale
+                                } else {
+                                    // Still apply pan even if zoom was extreme
+                                    panOffset += pan
+                                }
+                            }
+                            // When down to 1 finger after pinch, just pan (no zoom)
+                            else if (activePointers == 1) {
+                                panOffset += event.calculatePan()
+                            }
 
                             gestureStarted = true
                             pointers.forEach { it.consume() }
