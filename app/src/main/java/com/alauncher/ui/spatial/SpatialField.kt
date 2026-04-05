@@ -416,9 +416,18 @@ fun SpatialField(
                             scaleY *= scalePulse
                         }
                 ) {
+                    // If orb is inside the magnify lens, force labels visible
+                    val effectiveScale = if (magnifyState != null && magnifyState.active &&
+                        magnifyState.isInsideLens(Offset(sx, sy))
+                    ) {
+                        1f // Always show labels inside magnifier
+                    } else {
+                        currentScale
+                    }
+
                     AppOrb(
                         app = app,
-                        scale = currentScale,
+                        scale = effectiveScale,
                         ringIndex = pos.ring,
                     )
                 }
