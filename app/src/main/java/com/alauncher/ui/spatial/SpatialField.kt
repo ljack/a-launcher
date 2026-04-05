@@ -1,5 +1,11 @@
 package com.alauncher.ui.spatial
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -8,7 +14,6 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -85,6 +90,18 @@ fun SpatialField(
     var scale by remember { mutableFloatStateOf(1f) }
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     var lastTapTime by remember { mutableStateOf(0L) }
+
+    // Breathing animation — only consumed in graphicsLayer (GPU-only, no recomposition)
+    val infiniteTransition = rememberInfiniteTransition(label = "breathe")
+    val breathe by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "breathe",
+    )
 
     val goldenAngle = PI * (3.0 - sqrt(5.0))
     val orbSizePx = 220f
@@ -268,6 +285,8 @@ fun SpatialField(
                     sy < -margin || sy > fieldSize.height + margin
                 ) return@forEachIndexed
 
+                // Breathing: per-orb phase offset creates a wave across the spiral
+                val ringIdx = pos.ring
                 Box(
                     modifier = Modifier
                         .graphicsLayer {
@@ -276,6 +295,14 @@ fun SpatialField(
                             scaleX = currentScale
                             scaleY = currentScale
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+
+                            // GPU-only breathing: subtle alpha + scale pulse
+                            val phase = breathe + ringIdx * 0.3f
+                            val pulse = sin(phase) * 0.5f + 0.5f // 0..1
+                            alpha = 0.75f + pulse * 0.25f         // 0.75..1.0
+                            val scalePulse = 1f + pulse * 0.03f   // 1.0..1.03
+                            scaleX *= scalePulse
+                            scaleY *= scalePulse
                         }
                 ) {
                     AppOrb(

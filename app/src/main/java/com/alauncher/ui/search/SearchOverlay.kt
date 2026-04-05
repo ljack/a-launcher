@@ -1,5 +1,6 @@
 package com.alauncher.ui.search
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -7,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,12 +21,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
@@ -65,6 +73,11 @@ fun SearchOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Back gesture/button closes search
+    if (visible) {
+        BackHandler(onBack = onDismiss)
+    }
+
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -75,21 +88,19 @@ fun SearchOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background.copy(alpha = 0.95f))
-                .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {
-                    onDismiss()
-                }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 60.dp)
-                    .clickable(enabled = false) {} // prevent click-through
+                    .statusBarsPadding()
+                    .padding(top = 12.dp)
             ) {
-                // Search input
+                // Search input with close button
                 SearchBar(
                     query = query,
                     onQueryChange = onQueryChange,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    onClose = onDismiss,
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
 
                 Spacer(Modifier.height(8.dp))
@@ -134,48 +145,73 @@ fun SearchOverlay(
 private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val pillShape = RoundedCornerShape(28.dp)
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
 
-    Box(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(pillShape)
             .background(
-                Brush.horizontalGradient(
+                Brush.verticalGradient(
                     colors = listOf(
-                        OrbGlow.copy(alpha = 0.12f),
-                        OrbGlowSecondary.copy(alpha = 0.08f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.06f),
                     )
                 )
             )
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .border(
+                width = 0.5.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.25f),
+                        Color.White.copy(alpha = 0.08f),
+                    )
+                ),
+                shape = pillShape,
+            )
+            .padding(start = 20.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
     ) {
-        if (query.isEmpty()) {
-            Text(
-                text = "Search apps...",
-                color = TextSecondary.copy(alpha = 0.5f),
-                fontSize = 16.sp,
+        Box(modifier = Modifier.weight(1f).padding(vertical = 10.dp)) {
+            if (query.isEmpty()) {
+                Text(
+                    text = "Search apps...",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 16.sp,
+                )
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                textStyle = TextStyle(
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 16.sp,
+                ),
+                singleLine = true,
+                cursorBrush = SolidColor(Color.White.copy(alpha = 0.7f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
             )
         }
-        BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            textStyle = TextStyle(
-                color = TextPrimary,
-                fontSize = 16.sp,
-            ),
-            singleLine = true,
-            cursorBrush = SolidColor(OrbGlowSecondary),
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester),
-        )
+
+        // Close button
+        IconButton(onClick = onClose) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Close search",
+                tint = Color.White.copy(alpha = 0.6f),
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }
 
