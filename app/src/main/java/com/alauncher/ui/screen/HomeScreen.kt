@@ -29,6 +29,7 @@ import com.alauncher.ui.spatial.SpatialField
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
+    onRequestNotificationAccess: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val mediaState by viewModel.mediaState.collectAsStateWithLifecycle()
