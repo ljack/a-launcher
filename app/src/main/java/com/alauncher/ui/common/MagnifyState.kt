@@ -24,6 +24,12 @@ class MagnifyState {
     /** Whether the user is currently dragging the lens */
     var dragging by mutableStateOf(false)
 
+    /** The app index currently highlighted under touch (for launch indicator) */
+    var highlightedAppIndex by mutableStateOf(-1)
+
+    /** Screen position of the highlighted app (for drawing the indicator) */
+    var highlightedAppPos by mutableStateOf(Offset.Zero)
+
     /** Lens radius in pixels */
     var radiusPx by mutableFloatStateOf(550f)
 
@@ -47,6 +53,7 @@ class MagnifyState {
 
     fun release() {
         dragging = false
+        highlightedAppIndex = -1
     }
 
     fun dismiss() {

@@ -109,6 +109,8 @@ fun HomeScreen(
 
                         // Magnify shader takes priority when active
                         val effect = if (magnifyState.active) {
+                            val hlPos = magnifyState.highlightedAppPos
+                            val hasHl = magnifyState.highlightedAppIndex >= 0
                             createMagnifyEffect(
                                 width = w, height = h,
                                 centerX = magnifyState.center.x,
@@ -117,6 +119,9 @@ fun HomeScreen(
                                 magnification = magnifyState.magnification,
                                 edgeWidth = 35f,
                                 refractiveIndex = 1.5f,
+                                highlightX = if (hasHl) hlPos.x else 0f,
+                                highlightY = if (hasHl) hlPos.y else 0f,
+                                highlightRadius = 30f,
                             )
                         } else if (topZoneHeight > 0 || bottomZoneHeight > 0) {
                             createRefractionEffect(

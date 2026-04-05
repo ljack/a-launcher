@@ -22,6 +22,8 @@ private const val MAGNIFY_SHADER = """
     uniform float iEdgeWidth;     // glass rim width in pixels
     uniform float iRefractiveIndex;
     uniform float iAlpha;         // 0..1 for fade in/out
+    uniform float2 iHighlight;    // screen position of highlighted app (0,0 = none)
+    uniform float iHighlightRadius; // radius of highlight ring
 
     // Glass edge profile: smooth raised cosine
     float edgeProfile(float t) {
@@ -48,6 +50,21 @@ private const val MAGNIFY_SHADER = """
 
             // Subtle glass tint
             color.rgb += half3(0.02, 0.04, 0.06) * iAlpha;
+
+            // Highlight ring around selected app
+            if (iHighlight.x > 0.0 || iHighlight.y > 0.0) {
+                // Map the highlight position through magnification
+                float2 highlightInLens = iCenter + (iHighlight - iCenter) * iMagnification;
+                float highlightDist = length(magnified - iHighlight);
+                float ringDist = abs(highlightDist - iHighlightRadius) / iMagnification;
+                // Glowing ring
+                float ring = exp(-ringDist * ringDist * 0.5) * 0.8;
+                color.rgb += half3(ring * 0.5, ring * 0.9, ring); // cyan glow
+                // Soft fill
+                float fill = smoothstep(iHighlightRadius * 1.2, iHighlightRadius * 0.3, highlightDist);
+                color.rgb += half3(fill * 0.03, fill * 0.06, fill * 0.08);
+            }
+
             return color;
         }
 
@@ -114,6 +131,9 @@ fun createMagnifyEffect(
     edgeWidth: Float = 30f,
     refractiveIndex: Float = 1.5f,
     alpha: Float = 1f,
+    highlightX: Float = 0f,
+    highlightY: Float = 0f,
+    highlightRadius: Float = 35f,
 ): RenderEffect? {
     return try {
         val shader = RuntimeShader(MAGNIFY_SHADER)
@@ -124,6 +144,8 @@ fun createMagnifyEffect(
         shader.setFloatUniform("iEdgeWidth", edgeWidth)
         shader.setFloatUniform("iRefractiveIndex", refractiveIndex)
         shader.setFloatUniform("iAlpha", alpha)
+        shader.setFloatUniform("iHighlight", highlightX, highlightY)
+        shader.setFloatUniform("iHighlightRadius", highlightRadius)
         RenderEffect.createRuntimeShaderEffect(shader, "inputTexture")
     } catch (e: Exception) {
         null

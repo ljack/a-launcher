@@ -235,8 +235,30 @@ fun SpatialField(
                                     // Dragging the magnify lens
                                     mag.moveTo(change.position)
                                     change.consume()
-                                } else if (touchedInsideLens) {
-                                    // Waiting to determine tap vs drag inside lens
+                                } else if (touchedInsideLens && mag != null) {
+                                    // Waiting to determine tap vs drag — show highlight
+                                    val dx = change.position.x - mag.center.x
+                                    val dy = change.position.y - mag.center.y
+                                    val rX = mag.center.x + dx / mag.magnification
+                                    val rY = mag.center.y + dy / mag.magnification
+                                    val cX = fieldSize.width / 2f
+                                    val cY = fieldSize.height / 2f
+                                    val hRad = orbSizePx * scale * 1.5f
+                                    var bestIdx = -1
+                                    var bestDist = Float.MAX_VALUE
+                                    for (i in rawPositions.indices) {
+                                        if (i >= apps.size) break
+                                        val p = rawPositions[i]
+                                        val px = p.rawX * scale + cX + panOffset.x
+                                        val py = p.rawY * scale + cY + panOffset.y
+                                        val d = hypot(rX - px, rY - py)
+                                        if (d < hRad && d < bestDist) {
+                                            bestDist = d
+                                            bestIdx = i
+                                            mag.highlightedAppPos = Offset(px, py)
+                                        }
+                                    }
+                                    mag.highlightedAppIndex = bestIdx
                                     change.consume()
                                 } else if (!magnifyActivated) {
                                     // Normal pan
