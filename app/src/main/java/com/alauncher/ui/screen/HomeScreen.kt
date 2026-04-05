@@ -1,5 +1,11 @@
 package com.alauncher.ui.screen
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,12 +18,19 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.alauncher.ui.common.AquaZone
 import com.alauncher.ui.common.WaveEdge
+import com.alauncher.ui.common.createRefractionEffect
 import com.alauncher.ui.media.MediaHub
 import com.alauncher.ui.search.SearchOverlay
 import com.alauncher.ui.search.SearchTrigger
@@ -26,9 +39,9 @@ import com.alauncher.ui.spatial.SpatialField
 /**
  * Main home screen of the launcher.
  *
- * Single SpatialField fills the screen. Aqua frosted glass zones
- * overlay at top (media hub) and bottom (search) with strong
- * tinting that creates the frosted glass look.
+ * Snell-Descartes refraction shader distorts the spatial field
+ * in the aqua glass zones, creating realistic underwater/glass effect.
+ * Liquid glass tint overlays on top for the frosted look.
  */
 @Composable
 fun HomeScreen(
@@ -41,10 +54,31 @@ fun HomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
 
+    var topZoneHeight by remember { mutableIntStateOf(0) }
+    var bottomZoneHeight by remember { mutableIntStateOf(0) }
+    var totalWidth by remember { mutableIntStateOf(0) }
+    var totalHeight by remember { mutableIntStateOf(0) }
+
+    // Animation time for the refraction wave
+    val infiniteTransition = rememberInfiniteTransition(label = "refraction")
+    val refractionTime by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 100f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(100_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "refractionTime",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .onSizeChanged {
+                totalWidth = it.width
+                totalHeight = it.height
+            },
     ) {
         if (uiState.isLoading) {
             CircularProgressIndicator(
@@ -52,35 +86,56 @@ fun HomeScreen(
                 modifier = Modifier.align(Alignment.Center),
             )
         } else {
-            // Spatial field fills entire screen
+            // Spatial field with Snell-Descartes refraction shader
             SpatialField(
                 apps = uiState.apps,
                 onAppTap = { app -> viewModel.launchApp(app) },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        if (totalWidth > 0 && totalHeight > 0 &&
+                            (topZoneHeight > 0 || bottomZoneHeight > 0)
+                        ) {
+                            val effect = createRefractionEffect(
+                                width = totalWidth.toFloat(),
+                                height = totalHeight.toFloat(),
+                                time = refractionTime,
+                                topZoneEnd = topZoneHeight.toFloat(),
+                                bottomZoneStart = (totalHeight - bottomZoneHeight).toFloat(),
+                                refractiveIndex = 1.33f,  // water
+                                waveAmplitude = 10f,
+                                waveFrequency = 3f,
+                                distortionStrength = 20f,
+                            )
+                            if (effect != null) {
+                                renderEffect = effect.asComposeRenderEffect()
+                            }
+                        }
+                    },
             )
 
-            // Frosted glass overlays
+            // Liquid glass overlays
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top: Media Hub
                 AquaZone(
                     waveEdge = WaveEdge.Bottom,
                     alpha = 0.7f,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding(),
+                        .statusBarsPadding()
+                        .onSizeChanged { topZoneHeight = it.height },
                 ) {
                     MediaHub(mediaState = mediaState)
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Bottom: Search
                 AquaZone(
                     waveEdge = WaveEdge.Top,
                     alpha = 0.7f,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding(),
+                        .navigationBarsPadding()
+                        .onSizeChanged { bottomZoneHeight = it.height },
                 ) {
                     SearchTrigger(onClick = { viewModel.openSearch() })
                 }
