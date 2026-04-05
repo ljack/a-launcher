@@ -46,6 +46,7 @@ fun AquaZone(
     waveEdge: WaveEdge = WaveEdge.Bottom,
     waveAmplitude: Dp = 12.dp,
     alpha: Float = 0.75f,
+    showWaveEdge: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "aquaWave")
@@ -66,9 +67,10 @@ fun AquaZone(
                 val ampPx = waveAmplitude.toPx()
                 drawAquaBackground(
                     waveEdge = waveEdge,
-                    wavePhase = wavePhase,
-                    waveAmplitude = ampPx,
+                    wavePhase = if (showWaveEdge) wavePhase else 0f,
+                    waveAmplitude = if (showWaveEdge) ampPx else 0f,
                     alpha = alpha,
+                    showEdgeLine = showWaveEdge,
                 )
             }
     ) {
@@ -83,6 +85,7 @@ private fun DrawScope.drawAquaBackground(
     wavePhase: Float,
     waveAmplitude: Float,
     alpha: Float,
+    showEdgeLine: Boolean = true,
 ) {
     val w = size.width
     val h = size.height
@@ -161,6 +164,7 @@ private fun DrawScope.drawAquaBackground(
     )
 
     // Subtle bright edge along the wave (caustic-like highlight)
+    if (!showEdgeLine) return
     val edgePath = Path()
     val steps = 60
     when (waveEdge) {
