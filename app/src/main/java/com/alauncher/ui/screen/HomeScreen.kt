@@ -103,9 +103,10 @@ fun HomeScreen(
                                 topZoneEnd = topZoneHeight.toFloat(),
                                 bottomZoneStart = (totalHeight - bottomZoneHeight).toFloat(),
                                 refractiveIndex = 1.33f,  // water
-                                waveAmplitude = 10f,
+                                waveAmplitude = 12f,
                                 waveFrequency = 3f,
-                                distortionStrength = 20f,
+                                edgeHeight = 45f,   // glass thickness at edge
+                                edgeWidth = 140f,    // lens zone width
                             )
                             if (effect != null) {
                                 renderEffect = effect.asComposeRenderEffect()
