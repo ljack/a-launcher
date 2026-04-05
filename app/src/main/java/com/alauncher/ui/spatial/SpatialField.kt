@@ -431,15 +431,28 @@ fun SpatialField(
                     sy < -margin || sy > fieldSize.height + margin
                 ) return@forEachIndexed
 
-                // Breathing: per-orb phase offset creates a wave across the spiral
+                // Check if this orb is inside the magnify lens
+                val insideLens = magnifyState != null && magnifyState.active &&
+                    magnifyState.isInsideLens(Offset(sx, sy))
+
+                // Orbs inside the lens render at a larger scale so they're crisp
+                // when the shader magnifies them. The render scale compensates
+                // for the magnification so final visual size is correct.
+                val renderScale = if (insideLens && magnifyState != null) {
+                    // Render bigger so shader magnification shows crisp pixels
+                    (currentScale * magnifyState.magnification).coerceAtMost(1f)
+                } else {
+                    currentScale
+                }
+
                 val ringIdx = pos.ring
                 Box(
                     modifier = Modifier
                         .graphicsLayer {
-                            translationX = sx - (orbSizePx / 2f) * currentScale
-                            translationY = sy - (orbSizePx / 2f) * currentScale
-                            scaleX = currentScale
-                            scaleY = currentScale
+                            translationX = sx - (orbSizePx / 2f) * renderScale
+                            translationY = sy - (orbSizePx / 2f) * renderScale
+                            scaleX = renderScale
+                            scaleY = renderScale
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
 
                             // GPU-only breathing: subtle alpha + scale pulse
@@ -451,18 +464,9 @@ fun SpatialField(
                             scaleY *= scalePulse
                         }
                 ) {
-                    // If orb is inside the magnify lens, force labels visible
-                    val effectiveScale = if (magnifyState != null && magnifyState.active &&
-                        magnifyState.isInsideLens(Offset(sx, sy))
-                    ) {
-                        1f // Always show labels inside magnifier
-                    } else {
-                        currentScale
-                    }
-
                     AppOrb(
                         app = app,
-                        scale = effectiveScale,
+                        scale = if (insideLens) 1f else currentScale,
                         ringIndex = pos.ring,
                     )
                 }
