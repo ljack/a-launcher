@@ -120,6 +120,7 @@ fun HomeScreen(
                 AquaZone(
                     waveEdge = WaveEdge.Bottom,
                     alpha = 0.7f,
+                    showWaveEdge = false,
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
@@ -133,6 +134,7 @@ fun HomeScreen(
                 AquaZone(
                     waveEdge = WaveEdge.Top,
                     alpha = 0.7f,
+                    showWaveEdge = false,
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
