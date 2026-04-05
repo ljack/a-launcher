@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="orb_glow">#FF6C63FF</color>
+    <color name="surface_dark">#FF0A0A0F</color>
+    <color name="surface_card">#FF1A1A2E</color>
+</resources>
