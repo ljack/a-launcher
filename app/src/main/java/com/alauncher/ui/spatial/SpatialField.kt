@@ -229,7 +229,7 @@ fun SpatialField(
 
             // Glow halos + connection lines — single Canvas pass, no composition
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val glowRadius = 42f * currentScale
+                val glowRadius = 55f * currentScale
                 val currentBreathe = breathe
 
                 // Pass 1: Glow halos behind everything
@@ -255,7 +255,7 @@ fun SpatialField(
                     val phase = currentBreathe + pos.ring * 0.3f
                     val pulse = sin(phase) * 0.5f + 0.5f
                     val gravity = apps[i].gravityScore
-                    val glowAlpha = (0.15f + gravity * 0.35f + pulse * 0.1f).coerceIn(0.1f, 0.6f)
+                    val glowAlpha = (0.35f + gravity * 0.35f + pulse * 0.15f).coerceIn(0.25f, 0.75f)
 
                     drawCircle(
                         color = glowColor.copy(alpha = glowAlpha),
