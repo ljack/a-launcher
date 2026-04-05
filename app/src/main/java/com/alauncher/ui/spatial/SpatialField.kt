@@ -56,10 +56,9 @@ private fun clampPan(
 ): Offset {
     if (appCount == 0 || fieldSize.width == 0) return pan
     val contentRadius = spreadFactor * sqrt(appCount.toFloat()) * scale
-    val screenW = fieldSize.width.toFloat()
-    val screenH = fieldSize.height.toFloat()
-    val maxPanX = (contentRadius - screenW / 2f).coerceAtLeast(0f)
-    val maxPanY = (contentRadius - screenH / 2f).coerceAtLeast(0f)
+    // Allow panning so any edge app can reach the screen center
+    val maxPanX = contentRadius
+    val maxPanY = contentRadius
     return Offset(
         x = pan.x.coerceIn(-maxPanX, maxPanX),
         y = pan.y.coerceIn(-maxPanY, maxPanY),
