@@ -15,4 +15,6 @@ Properties that should be exposed via DataStore preferences and eventually a set
 | `orbSizePx` | Float | `220` | SpatialField | Base size of app orbs in pixels |
 | `breatheEnabled` | Boolean | `true` | SpatialField | Enable/disable orb breathing animation |
 | `connectionLinesEnabled` | Boolean | `true` | SpatialField | Show/hide connection lines between nearby apps |
-| `glowEnabled` | Boolean | `true` | AppOrb | Enable/disable orb glow effect |
+| `glowEnabled` | Boolean | `false` | AppOrb | Enable/disable orb outer glow (radial gradient) — perf impact |
+| `refractionEnabled` | Boolean | `true` | HomeScreen | Enable/disable Snell-Descartes refraction shader |
+| `connectionLinesMax` | Int | `60` | SpatialField | Max connection lines drawn per frame |

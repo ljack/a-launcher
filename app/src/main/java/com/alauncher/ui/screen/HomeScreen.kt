@@ -86,33 +86,37 @@ fun HomeScreen(
                 modifier = Modifier.align(Alignment.Center),
             )
         } else {
-            // Spatial field with Snell-Descartes refraction shader
+            // Spatial field — refraction shader applied when not dragging
+            // (configurable: refractionEnabled)
+            val refractionEnabled = true
             SpatialField(
                 apps = uiState.apps,
                 onAppTap = { app -> viewModel.launchApp(app) },
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        if (totalWidth > 0 && totalHeight > 0 &&
-                            (topZoneHeight > 0 || bottomZoneHeight > 0)
-                        ) {
-                            val effect = createRefractionEffect(
-                                width = totalWidth.toFloat(),
-                                height = totalHeight.toFloat(),
-                                time = refractionTime,
-                                topZoneEnd = topZoneHeight.toFloat(),
-                                bottomZoneStart = (totalHeight - bottomZoneHeight).toFloat(),
-                                refractiveIndex = 1.33f,  // water
-                                waveAmplitude = 12f,
-                                waveFrequency = 3f,
-                                edgeHeight = 45f,   // glass thickness at edge
-                                edgeWidth = 140f,    // lens zone width
-                            )
-                            if (effect != null) {
-                                renderEffect = effect.asComposeRenderEffect()
+                    .then(
+                        if (refractionEnabled) Modifier.graphicsLayer {
+                            if (totalWidth > 0 && totalHeight > 0 &&
+                                (topZoneHeight > 0 || bottomZoneHeight > 0)
+                            ) {
+                                val effect = createRefractionEffect(
+                                    width = totalWidth.toFloat(),
+                                    height = totalHeight.toFloat(),
+                                    time = refractionTime,
+                                    topZoneEnd = topZoneHeight.toFloat(),
+                                    bottomZoneStart = (totalHeight - bottomZoneHeight).toFloat(),
+                                    refractiveIndex = 1.33f,
+                                    waveAmplitude = 12f,
+                                    waveFrequency = 3f,
+                                    edgeHeight = 45f,
+                                    edgeWidth = 140f,
+                                )
+                                if (effect != null) {
+                                    renderEffect = effect.asComposeRenderEffect()
+                                }
                             }
-                        }
-                    },
+                        } else Modifier
+                    ),
             )
 
             // Liquid glass overlays

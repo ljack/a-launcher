@@ -1,20 +1,14 @@
 package com.alauncher.ui.spatial
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
-import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -28,9 +22,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.alauncher.data.model.LauncherApp
 import com.alauncher.ui.theme.OrbGlow
@@ -44,8 +38,6 @@ import kotlin.math.sqrt
 
 /**
  * Clamp pan offset so content stays visible.
- * When zoomed out (content smaller than screen), pan is locked to center.
- * When zoomed in, pan is limited so content edges remain on screen.
  */
 private fun clampPan(
     pan: Offset,
@@ -56,12 +48,9 @@ private fun clampPan(
 ): Offset {
     if (appCount == 0 || fieldSize.width == 0) return pan
     val contentRadius = spreadFactor * sqrt(appCount.toFloat()) * scale
-    // Allow panning so any edge app can reach the screen center
-    val maxPanX = contentRadius
-    val maxPanY = contentRadius
     return Offset(
-        x = pan.x.coerceIn(-maxPanX, maxPanX),
-        y = pan.y.coerceIn(-maxPanY, maxPanY),
+        x = pan.x.coerceIn(-contentRadius, contentRadius),
+        y = pan.y.coerceIn(-contentRadius, contentRadius),
     )
 }
 
@@ -77,10 +66,13 @@ private data class OrbPos(
 /**
  * The main spatial field composable.
  * Renders apps in a golden-angle spiral centered on the screen.
- * Includes animated connection lines between nearby apps.
  *
- * All gestures (pan, zoom, tap) handled in one unified pointer input
- * to avoid conflicts between parent transform and child tap handlers.
+ * PERFORMANCE:
+ * - ONE graphicsLayer on the field container handles all pan/zoom
+ * - Pan/zoom changes only update the GPU transform matrix, no recomposition
+ * - Orbs positioned at fixed raw coordinates, only recompose on app data change
+ * - Connection lines drawn in Canvas (draw-scope only, no composition)
+ * - Visibility culling skips off-screen orbs
  */
 @Composable
 fun SpatialField(
@@ -94,23 +86,11 @@ fun SpatialField(
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     var lastTapTime by remember { mutableStateOf(0L) }
 
-    // Subtle breathing animation
-    val infiniteTransition = rememberInfiniteTransition(label = "breathe")
-    val breathe by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(6000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "breathe",
-    )
-
-    // Pre-compute raw positions (before pan/zoom transform)
     val goldenAngle = PI * (3.0 - sqrt(5.0))
     val orbSizePx = 220f
     val spreadFactor = orbSizePx * 0.85f
 
+    // Pre-compute raw positions — only changes when app count changes
     val rawPositions = remember(apps.size) {
         val positions = apps.mapIndexed { index, _ ->
             val angle = index * goldenAngle
@@ -121,7 +101,6 @@ fun SpatialField(
                 ring = index / 8,
             )
         }
-        // Center the spiral: offset all positions so the bounding box center is at (0,0)
         if (positions.isNotEmpty()) {
             val minX = positions.minOf { it.rawX }
             val maxX = positions.maxOf { it.rawX }
@@ -137,159 +116,130 @@ fun SpatialField(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { fieldSize = it }
-            .then(if (!interactive) Modifier else Modifier
-            .pointerInput(apps) {
-                awaitEachGesture {
-                    val firstDown = awaitFirstDown(requireUnconsumed = false)
-                    val downPos = firstDown.position
-                    var totalPan = Offset.Zero
-                    var totalZoom = 1f
-                    var gestureStarted = false
-                    var isMultiTouch = false
+            .then(
+                if (!interactive) Modifier
+                else Modifier.pointerInput(apps) {
+                    awaitEachGesture {
+                        val firstDown = awaitFirstDown(requireUnconsumed = false)
+                        val downPos = firstDown.position
+                        var gestureStarted = false
+                        var isMultiTouch = false
 
-                    // Track movement to distinguish tap from drag
-                    do {
-                        val event = awaitPointerEvent()
-                        val pointers = event.changes
+                        do {
+                            val event = awaitPointerEvent()
+                            val pointers = event.changes
 
-                        if (pointers.size >= 2) {
-                            isMultiTouch = true
-                        }
+                            if (pointers.size >= 2) isMultiTouch = true
 
-                        if (isMultiTouch) {
-                            // Only process zoom when 2+ fingers are actually down
-                            // This prevents wild values when one finger lifts first
-                            val activePointers = pointers.count { it.pressed }
+                            if (isMultiTouch) {
+                                val activePointers = pointers.count { it.pressed }
+                                if (activePointers >= 2) {
+                                    val zoom = event.calculateZoom()
+                                    val pan = event.calculatePan()
+                                    val centroid = event.calculateCentroid()
 
-                            if (activePointers >= 2) {
-                                val zoom = event.calculateZoom()
-                                val pan = event.calculatePan()
-                                val centroid = event.calculateCentroid()
-
-                                // Guard: ignore extreme per-frame zoom spikes
-                                if (zoom in 0.5f..2.0f) {
-                                    val oldScale = scale
-                                    val newScale = (oldScale * zoom).coerceIn(0.2f, 5f)
-                                    val scaleDelta = newScale / oldScale
-
-                                    // Anchor zoom to pinch centroid
-                                    val cx = fieldSize.width / 2f
-                                    val cy = fieldSize.height / 2f
-                                    panOffset = Offset(
-                                        x = centroid.x - cx + (panOffset.x - centroid.x + cx) * scaleDelta + pan.x,
-                                        y = centroid.y - cy + (panOffset.y - centroid.y + cy) * scaleDelta + pan.y,
-                                    )
-
-                                    scale = newScale
+                                    if (zoom in 0.5f..2.0f) {
+                                        val oldScale = scale
+                                        val newScale = (oldScale * zoom).coerceIn(0.2f, 5f)
+                                        val scaleDelta = newScale / oldScale
+                                        val cx = fieldSize.width / 2f
+                                        val cy = fieldSize.height / 2f
+                                        panOffset = Offset(
+                                            x = centroid.x - cx + (panOffset.x - centroid.x + cx) * scaleDelta + pan.x,
+                                            y = centroid.y - cy + (panOffset.y - centroid.y + cy) * scaleDelta + pan.y,
+                                        )
+                                        scale = newScale
+                                        panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                    } else {
+                                        panOffset += pan
+                                        panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                    }
+                                } else if (activePointers == 1) {
+                                    panOffset += event.calculatePan()
+                                }
+                                gestureStarted = true
+                                pointers.forEach { it.consume() }
+                            } else if (pointers.size == 1) {
+                                val change = pointers[0]
+                                val dragDelta = change.position - downPos
+                                if (abs(dragDelta.x) > 15f || abs(dragDelta.y) > 15f) {
+                                    gestureStarted = true
+                                }
+                                if (gestureStarted) {
+                                    panOffset += event.calculatePan()
                                     panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
-                                } else {
-                                    // Still apply pan even if zoom was extreme
-                                    panOffset += pan
-                                    panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
+                                    change.consume()
                                 }
                             }
-                            // When down to 1 finger after pinch, just pan (no zoom)
-                            else if (activePointers == 1) {
-                                panOffset += event.calculatePan()
-                            }
+                        } while (pointers.any { it.pressed })
 
-                            gestureStarted = true
-                            pointers.forEach { it.consume() }
-                        } else if (pointers.size == 1) {
-                            val change = pointers[0]
-                            val dragDelta = change.position - downPos
-                            totalPan += event.calculatePan()
+                        panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
 
-                            // Start panning after small threshold
-                            if (abs(dragDelta.x) > 15f || abs(dragDelta.y) > 15f) {
-                                gestureStarted = true
-                            }
-
-                            if (gestureStarted) {
-                                panOffset += event.calculatePan()
-                                panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
-                                change.consume()
-                            }
-                        }
-                    } while (pointers.any { it.pressed })
-
-                    // Clamp pan — applied on release
-                    panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
-
-                    // If minimal movement and single touch → it's a tap
-                    if (!gestureStarted && !isMultiTouch && fieldSize.width > 0) {
-                        val now = System.currentTimeMillis()
-
-                        // Double-tap: reset to default view
-                        if (now - lastTapTime < 300L) {
-                            scale = 1f
-                            panOffset = Offset.Zero
-                            lastTapTime = 0L
-                        } else {
-                            lastTapTime = now
-
-                            // Hit-test: find which app was tapped
-                            val centerX = fieldSize.width / 2f
-                            val centerY = fieldSize.height / 2f
-                            val tapX = downPos.x
-                            val tapY = downPos.y
-
-                            val hitRadius = orbSizePx * scale * 0.4f
-
-                            for (i in rawPositions.indices) {
-                                val pos = rawPositions[i]
-                                val sx = (pos.rawX) * scale + centerX + panOffset.x
-                                val sy = (pos.rawY) * scale + centerY + panOffset.y
-                                val dist = hypot(tapX - sx, tapY - sy)
-                                if (dist < hitRadius && i < apps.size) {
-                                    onAppTap(apps[i])
-                                    lastTapTime = 0L // Don't treat next tap as double
-                                    break
+                        // Tap detection
+                        if (!gestureStarted && !isMultiTouch && fieldSize.width > 0) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastTapTime < 300L) {
+                                scale = 1f
+                                panOffset = Offset.Zero
+                                lastTapTime = 0L
+                            } else {
+                                lastTapTime = now
+                                val centerX = fieldSize.width / 2f
+                                val centerY = fieldSize.height / 2f
+                                val hitRadius = orbSizePx * scale * 0.4f
+                                for (i in rawPositions.indices) {
+                                    val pos = rawPositions[i]
+                                    val sx = pos.rawX * scale + centerX + panOffset.x
+                                    val sy = pos.rawY * scale + centerY + panOffset.y
+                                    val dist = hypot(downPos.x - sx, downPos.y - sy)
+                                    if (dist < hitRadius && i < apps.size) {
+                                        onAppTap(apps[i])
+                                        lastTapTime = 0L
+                                        break
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            })
+            )
     ) {
         if (fieldSize.width > 0 && fieldSize.height > 0) {
             val centerX = fieldSize.width / 2f
             val centerY = fieldSize.height / 2f
             val currentScale = scale
+            val currentPan = panOffset
 
-            // Compute screen positions
-            val screenPositions = rawPositions.map { pos ->
-                Offset(
-                    x = pos.rawX * currentScale + centerX + panOffset.x,
-                    y = pos.rawY * currentScale + centerY + panOffset.y,
-                )
-            }
-
-            // Draw connection lines between nearby apps
+            // Connection lines — drawn in Canvas (draw-only, no composition overhead)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val connectionDistance = 250f * currentScale
-                val maxConnections = 80
+                val maxConnections = 60
 
                 var connectionCount = 0
-                for (i in screenPositions.indices) {
+                for (i in rawPositions.indices) {
                     if (connectionCount >= maxConnections) break
-                    val a = screenPositions[i]
-                    if (a.x < -100 || a.x > size.width + 100 ||
-                        a.y < -100 || a.y > size.height + 100
+                    val posA = rawPositions[i]
+                    val ax = posA.rawX * currentScale + centerX + currentPan.x
+                    val ay = posA.rawY * currentScale + centerY + currentPan.y
+                    if (ax < -100 || ax > size.width + 100 ||
+                        ay < -100 || ay > size.height + 100
                     ) continue
 
-                    for (j in (i + 1) until minOf(screenPositions.size, i + 12)) {
+                    for (j in (i + 1) until minOf(rawPositions.size, i + 12)) {
                         if (connectionCount >= maxConnections) break
-                        val b = screenPositions[j]
-                        val dist = hypot(a.x - b.x, a.y - b.y)
+                        val posB = rawPositions[j]
+                        val bx = posB.rawX * currentScale + centerX + currentPan.x
+                        val by = posB.rawY * currentScale + centerY + currentPan.y
+                        val dist = hypot(ax - bx, ay - by)
                         if (dist < connectionDistance) {
                             val alpha = (1f - dist / connectionDistance) * 0.12f
-                            val pulseAlpha = alpha * (0.7f + 0.3f * sin(breathe * 2 * PI.toFloat() + i * 0.5f))
+                            val a = Offset(ax, ay)
+                            val b = Offset(bx, by)
                             drawLine(
                                 brush = Brush.linearGradient(
                                     colors = listOf(
-                                        OrbGlow.copy(alpha = pulseAlpha),
-                                        OrbGlowSecondary.copy(alpha = pulseAlpha),
+                                        OrbGlow.copy(alpha = alpha),
+                                        OrbGlowSecondary.copy(alpha = alpha),
                                     ),
                                     start = a,
                                     end = b,
@@ -305,42 +255,34 @@ fun SpatialField(
                 }
             }
 
-            // Draw orbs
+            // Orbs — each positioned with fixed offset, only recompose on app data change
             rawPositions.forEachIndexed { index, pos ->
                 if (index >= apps.size) return@forEachIndexed
                 val app = apps[index]
-                val screenPos = screenPositions[index]
-                val margin = orbSizePx * currentScale * 2
 
-                if (screenPos.x > -margin && screenPos.x < fieldSize.width + margin &&
-                    screenPos.y > -margin && screenPos.y < fieldSize.height + margin
-                ) {
-                    Layout(
-                        content = {
-                            AppOrb(
-                                app = app,
-                                scale = currentScale,
-                                ringIndex = pos.ring,
-                                breathePhase = breathe,
-                            )
-                        },
-                        modifier = Modifier
-                            .graphicsLayer {
-                                // Position orb center at screenPos
-                                // The scale is applied around transformOrigin (center by default)
-                                // so we offset by half the SCALED size
-                                translationX = screenPos.x - (orbSizePx / 2f) * currentScale
-                                translationY = screenPos.y - (orbSizePx / 2f) * currentScale
-                                scaleX = currentScale
-                                scaleY = currentScale
-                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                            }
-                    ) { measurables, constraints ->
-                        val placeables = measurables.map { it.measure(constraints) }
-                        layout(constraints.maxWidth, constraints.maxHeight) {
-                            placeables.forEach { it.place(0, 0) }
+                // Visibility culling
+                val sx = pos.rawX * currentScale + centerX + currentPan.x
+                val sy = pos.rawY * currentScale + centerY + currentPan.y
+                val margin = orbSizePx * currentScale
+                if (sx < -margin || sx > fieldSize.width + margin ||
+                    sy < -margin || sy > fieldSize.height + margin
+                ) return@forEachIndexed
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            translationX = sx - (orbSizePx / 2f) * currentScale
+                            translationY = sy - (orbSizePx / 2f) * currentScale
+                            scaleX = currentScale
+                            scaleY = currentScale
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                         }
-                    }
+                ) {
+                    AppOrb(
+                        app = app,
+                        scale = currentScale,
+                        ringIndex = pos.ring,
+                    )
                 }
             }
         }
