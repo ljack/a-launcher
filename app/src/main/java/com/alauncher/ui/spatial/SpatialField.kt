@@ -43,6 +43,30 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
+ * Clamp pan offset so content stays visible.
+ * When zoomed out (content smaller than screen), pan is locked to center.
+ * When zoomed in, pan is limited so content edges remain on screen.
+ */
+private fun clampPan(
+    pan: Offset,
+    scale: Float,
+    appCount: Int,
+    spreadFactor: Float,
+    fieldSize: IntSize,
+): Offset {
+    if (appCount == 0 || fieldSize.width == 0) return pan
+    val contentRadius = spreadFactor * sqrt(appCount.toFloat()) * scale
+    val screenW = fieldSize.width.toFloat()
+    val screenH = fieldSize.height.toFloat()
+    val maxPanX = (contentRadius - screenW / 2f).coerceAtLeast(0f)
+    val maxPanY = (contentRadius - screenH / 2f).coerceAtLeast(0f)
+    return Offset(
+        x = pan.x.coerceIn(-maxPanX, maxPanX),
+        y = pan.y.coerceIn(-maxPanY, maxPanY),
+    )
+}
+
+/**
  * Computed position for an app orb in the spatial field.
  */
 private data class OrbPos(
@@ -88,7 +112,7 @@ fun SpatialField(
     val spreadFactor = orbSizePx * 0.85f
 
     val rawPositions = remember(apps.size) {
-        apps.mapIndexed { index, _ ->
+        val positions = apps.mapIndexed { index, _ ->
             val angle = index * goldenAngle
             val radius = spreadFactor * sqrt((index + 1).toFloat())
             OrbPos(
@@ -97,6 +121,16 @@ fun SpatialField(
                 ring = index / 8,
             )
         }
+        // Center the spiral: offset all positions so the bounding box center is at (0,0)
+        if (positions.isNotEmpty()) {
+            val minX = positions.minOf { it.rawX }
+            val maxX = positions.maxOf { it.rawX }
+            val minY = positions.minOf { it.rawY }
+            val maxY = positions.maxOf { it.rawY }
+            val offsetX = (minX + maxX) / 2f
+            val offsetY = (minY + maxY) / 2f
+            positions.map { it.copy(rawX = it.rawX - offsetX, rawY = it.rawY - offsetY) }
+        } else positions
     }
 
     Box(
@@ -146,9 +180,11 @@ fun SpatialField(
                                     )
 
                                     scale = newScale
+                                    panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
                                 } else {
                                     // Still apply pan even if zoom was extreme
                                     panOffset += pan
+                                    panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
                                 }
                             }
                             // When down to 1 finger after pinch, just pan (no zoom)
@@ -170,28 +206,14 @@ fun SpatialField(
 
                             if (gestureStarted) {
                                 panOffset += event.calculatePan()
+                                panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
                                 change.consume()
                             }
                         }
                     } while (pointers.any { it.pressed })
 
-                    // Clamp pan to keep content visible
-                    if (rawPositions.isNotEmpty()) {
-                        // The spiral's radius in screen pixels at current scale
-                        val contentRadius = spreadFactor * sqrt(rawPositions.size.toFloat()) * scale
-                        // How much of the screen the content covers
-                        val screenW = fieldSize.width.toFloat()
-                        val screenH = fieldSize.height.toFloat()
-
-                        // When content is smaller than screen, keep it centered
-                        // When content is larger, allow panning but keep edges visible
-                        val maxPanX = (contentRadius - screenW / 2f).coerceAtLeast(0f)
-                        val maxPanY = (contentRadius - screenH / 2f).coerceAtLeast(0f)
-                        panOffset = Offset(
-                            x = panOffset.x.coerceIn(-maxPanX, maxPanX),
-                            y = panOffset.y.coerceIn(-maxPanY, maxPanY),
-                        )
-                    }
+                    // Clamp pan — applied on release
+                    panOffset = clampPan(panOffset, scale, rawPositions.size, spreadFactor, fieldSize)
 
                     // If minimal movement and single touch → it's a tap
                     if (!gestureStarted && !isMultiTouch && fieldSize.width > 0) {
@@ -303,10 +325,14 @@ fun SpatialField(
                         },
                         modifier = Modifier
                             .graphicsLayer {
-                                translationX = screenPos.x - orbSizePx / 2f
-                                translationY = screenPos.y - orbSizePx / 2f
+                                // Position orb center at screenPos
+                                // The scale is applied around transformOrigin (center by default)
+                                // so we offset by half the SCALED size
+                                translationX = screenPos.x - (orbSizePx / 2f) * currentScale
+                                translationY = screenPos.y - (orbSizePx / 2f) * currentScale
                                 scaleX = currentScale
                                 scaleY = currentScale
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                             }
                     ) { measurables, constraints ->
                         val placeables = measurables.map { it.measure(constraints) }
