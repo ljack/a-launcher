@@ -147,21 +147,15 @@ fun SpatialField(
                         var isMagnifyDrag = false
                         var magnifyActivated = false
 
-                        // Check if tap is inside an active (non-dragging) magnify lens
+                        // Check if touch is inside an active (non-dragging) magnify lens
                         val mag = magnifyState
-                        val tappedInsideLens = mag != null && mag.active && !mag.dragging &&
-                            hypot(downPos.x - mag.center.x, downPos.y - mag.center.y) < mag.radiusPx
+                        val touchedInsideLens = mag != null && mag.active && !mag.dragging &&
+                            mag.isInsideLens(downPos)
 
-                        if (tappedInsideLens && mag != null) {
-                            // Re-grab the lens to move it
-                            mag.dragging = true
-                            isMagnifyDrag = true
-                            magnifyActivated = true
-                        }
-
+                        // Don't immediately re-grab — wait to see if it's a tap or drag
                         // Check if tap is outside an active lens → dismiss
                         val tappedOutsideLens = mag != null && mag.active && !mag.dragging &&
-                            hypot(downPos.x - mag.center.x, downPos.y - mag.center.y) >= mag.radiusPx
+                            !mag.isInsideLens(downPos)
 
                         do {
                             val event = awaitPointerEvent()
@@ -227,9 +221,21 @@ fun SpatialField(
                                     change.consume()
                                 }
 
+                                // Inside lens: start dragging only after movement threshold
+                                if (touchedInsideLens && !isMagnifyDrag && !gestureStarted &&
+                                    totalDrag > 20f && mag != null
+                                ) {
+                                    mag.dragging = true
+                                    isMagnifyDrag = true
+                                    magnifyActivated = true
+                                }
+
                                 if (isMagnifyDrag && mag != null) {
                                     // Dragging the magnify lens
                                     mag.moveTo(change.position)
+                                    change.consume()
+                                } else if (touchedInsideLens) {
+                                    // Waiting to determine tap vs drag inside lens
                                     change.consume()
                                 } else if (!magnifyActivated) {
                                     // Normal pan
@@ -250,6 +256,35 @@ fun SpatialField(
                         // Release magnify drag (lens stays visible)
                         if (isMagnifyDrag && mag != null) {
                             mag.release()
+                            return@awaitEachGesture
+                        }
+
+                        // Tap inside lens (no drag) → hit-test apps at unmagnified position
+                        if (touchedInsideLens && !isMagnifyDrag && !gestureStarted &&
+                            !isMultiTouch && mag != null && fieldSize.width > 0
+                        ) {
+                            // Reverse the magnification to find real content position
+                            val dx = downPos.x - mag.center.x
+                            val dy = downPos.y - mag.center.y
+                            val realX = mag.center.x + dx / mag.magnification
+                            val realY = mag.center.y + dy / mag.magnification
+
+                            val centerX = fieldSize.width / 2f
+                            val centerY = fieldSize.height / 2f
+                            val hitRadius = orbSizePx * scale * 0.5f
+
+                            for (i in rawPositions.indices) {
+                                val pos = rawPositions[i]
+                                val sx = pos.rawX * scale + centerX + panOffset.x
+                                val sy = pos.rawY * scale + centerY + panOffset.y
+                                val dist = hypot(realX - sx, realY - sy)
+                                if (dist < hitRadius && i < apps.size) {
+                                    onAppTap(apps[i])
+                                    mag.dismiss()
+                                    return@awaitEachGesture
+                                }
+                            }
+                            // Tapped inside lens but missed an app — do nothing, lens stays
                             return@awaitEachGesture
                         }
 
