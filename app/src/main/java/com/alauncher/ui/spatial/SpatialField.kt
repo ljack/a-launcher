@@ -227,11 +227,47 @@ fun SpatialField(
             val currentScale = scale
             val currentPan = panOffset
 
-            // Connection lines — drawn in Canvas (draw-only, no composition overhead)
+            // Glow halos + connection lines — single Canvas pass, no composition
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val glowRadius = 42f * currentScale
+                val currentBreathe = breathe
+
+                // Pass 1: Glow halos behind everything
+                for (i in rawPositions.indices) {
+                    if (i >= apps.size) break
+                    val pos = rawPositions[i]
+                    val sx = pos.rawX * currentScale + centerX + currentPan.x
+                    val sy = pos.rawY * currentScale + centerY + currentPan.y
+                    // Cull off-screen
+                    if (sx < -glowRadius * 2 || sx > size.width + glowRadius * 2 ||
+                        sy < -glowRadius * 2 || sy > size.height + glowRadius * 2
+                    ) continue
+
+                    // Glow color: purple (inner) → teal (outer)
+                    val t = (pos.ring / 15f).coerceIn(0f, 1f)
+                    val glowColor = Color(
+                        red = OrbGlow.red * (1f - t) + OrbGlowSecondary.red * t,
+                        green = OrbGlow.green * (1f - t) + OrbGlowSecondary.green * t,
+                        blue = OrbGlow.blue * (1f - t) + OrbGlowSecondary.blue * t,
+                    )
+
+                    // Breathing alpha per orb
+                    val phase = currentBreathe + pos.ring * 0.3f
+                    val pulse = sin(phase) * 0.5f + 0.5f
+                    val gravity = apps[i].gravityScore
+                    val glowAlpha = (0.15f + gravity * 0.35f + pulse * 0.1f).coerceIn(0.1f, 0.6f)
+
+                    drawCircle(
+                        color = glowColor.copy(alpha = glowAlpha),
+                        radius = glowRadius,
+                        center = Offset(sx, sy),
+                        blendMode = BlendMode.Screen,
+                    )
+                }
+
+                // Pass 2: Connection lines
                 val connectionDistance = 250f * currentScale
                 val maxConnections = 60
-
                 var connectionCount = 0
                 for (i in rawPositions.indices) {
                     if (connectionCount >= maxConnections) break
