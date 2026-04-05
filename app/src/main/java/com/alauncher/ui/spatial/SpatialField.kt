@@ -68,6 +68,7 @@ fun SpatialField(
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
+    var lastTapTime by remember { mutableStateOf(0L) }
 
     // Subtle breathing animation
     val infiniteTransition = rememberInfiniteTransition(label = "breathe")
@@ -128,17 +129,16 @@ fun SpatialField(
 
                             val oldScale = scale
                             val newScale = (oldScale * zoom).coerceIn(0.15f, 5f)
+                            val scaleDelta = newScale / oldScale
 
-                            // Adjust pan so zoom is anchored to the pinch center point
-                            // This keeps the content under your fingers stationary
-                            val centerX = fieldSize.width / 2f
-                            val centerY = fieldSize.height / 2f
-                            val focusX = centroid.x - centerX - panOffset.x
-                            val focusY = centroid.y - centerY - panOffset.y
-                            panOffset += Offset(
-                                x = focusX * (1f - zoom),
-                                y = focusY * (1f - zoom),
-                            ) + pan
+                            // Anchor zoom to pinch centroid:
+                            // Offset the pan so the point under the centroid stays fixed
+                            val cx = fieldSize.width / 2f
+                            val cy = fieldSize.height / 2f
+                            panOffset = Offset(
+                                x = centroid.x - cx + (panOffset.x - centroid.x + cx) * scaleDelta + pan.x,
+                                y = centroid.y - cy + (panOffset.y - centroid.y + cy) * scaleDelta + pan.y,
+                            )
 
                             scale = newScale
 
@@ -161,24 +161,46 @@ fun SpatialField(
                         }
                     } while (pointers.any { it.pressed })
 
+                    // Clamp pan so content can't drift completely off-screen
+                    if (rawPositions.isNotEmpty()) {
+                        val maxRadius = spreadFactor * sqrt(rawPositions.size.toFloat()) * scale
+                        val maxPan = maxRadius + fieldSize.width * 0.3f
+                        panOffset = Offset(
+                            x = panOffset.x.coerceIn(-maxPan, maxPan),
+                            y = panOffset.y.coerceIn(-maxPan, maxPan),
+                        )
+                    }
+
                     // If minimal movement and single touch → it's a tap
                     if (!gestureStarted && !isMultiTouch && fieldSize.width > 0) {
-                        // Hit-test: find which app was tapped
-                        val centerX = fieldSize.width / 2f
-                        val centerY = fieldSize.height / 2f
-                        val tapX = downPos.x
-                        val tapY = downPos.y
+                        val now = System.currentTimeMillis()
 
-                        val hitRadius = orbSizePx * scale * 0.4f
+                        // Double-tap: reset to default view
+                        if (now - lastTapTime < 300L) {
+                            scale = 1f
+                            panOffset = Offset.Zero
+                            lastTapTime = 0L
+                        } else {
+                            lastTapTime = now
 
-                        for (i in rawPositions.indices) {
-                            val pos = rawPositions[i]
-                            val sx = (pos.rawX) * scale + centerX + panOffset.x
-                            val sy = (pos.rawY) * scale + centerY + panOffset.y
-                            val dist = hypot(tapX - sx, tapY - sy)
-                            if (dist < hitRadius && i < apps.size) {
-                                onAppTap(apps[i])
-                                break
+                            // Hit-test: find which app was tapped
+                            val centerX = fieldSize.width / 2f
+                            val centerY = fieldSize.height / 2f
+                            val tapX = downPos.x
+                            val tapY = downPos.y
+
+                            val hitRadius = orbSizePx * scale * 0.4f
+
+                            for (i in rawPositions.indices) {
+                                val pos = rawPositions[i]
+                                val sx = (pos.rawX) * scale + centerX + panOffset.x
+                                val sy = (pos.rawY) * scale + centerY + panOffset.y
+                                val dist = hypot(tapX - sx, tapY - sy)
+                                if (dist < hitRadius && i < apps.size) {
+                                    onAppTap(apps[i])
+                                    lastTapTime = 0L // Don't treat next tap as double
+                                    break
+                                }
                             }
                         }
                     }
