@@ -258,7 +258,15 @@ fun SpatialField(
                     val glowAlpha = (0.35f + gravity * 0.35f + pulse * 0.15f).coerceIn(0.25f, 0.75f)
 
                     drawCircle(
-                        color = glowColor.copy(alpha = glowAlpha),
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                glowColor.copy(alpha = glowAlpha),
+                                glowColor.copy(alpha = glowAlpha * 0.3f),
+                                Color.Transparent,
+                            ),
+                            center = Offset(sx, sy),
+                            radius = glowRadius,
+                        ),
                         radius = glowRadius,
                         center = Offset(sx, sy),
                         blendMode = BlendMode.Screen,
