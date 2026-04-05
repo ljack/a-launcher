@@ -212,7 +212,8 @@ fun SpatialField(
                                 val totalDrag = hypot(dragDelta.x, dragDelta.y)
 
                                 // Long-press detection: >300ms with <15px movement
-                                if (!magnifyActivated && !gestureStarted &&
+                                // Skip if already interacting with an active lens
+                                if (!magnifyActivated && !gestureStarted && !touchedInsideLens &&
                                     mag != null && elapsed > 300 && totalDrag < 15f
                                 ) {
                                     mag.activate(change.position)
@@ -271,7 +272,8 @@ fun SpatialField(
 
                             val centerX = fieldSize.width / 2f
                             val centerY = fieldSize.height / 2f
-                            val hitRadius = orbSizePx * scale * 0.5f
+                            // Larger hit radius inside lens — orbs appear bigger through magnification
+                            val hitRadius = orbSizePx * scale * 1.5f
 
                             for (i in rawPositions.indices) {
                                 val pos = rawPositions[i]
