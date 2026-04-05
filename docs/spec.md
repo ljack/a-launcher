@@ -84,7 +84,7 @@ Navigation extends INTO apps, exposing their content as sub-layers within the la
 - [ ] Tapping a layer item opens the app at that specific content
 - [ ] Graceful fallback for apps without layers (just launches the app)
 
-### F4: AI-Powered Search ⬜
+### F4: AI-Powered Search 🟡
 
 Intelligent, semantic search powered by on-device Gemma SLM.
 
@@ -108,7 +108,7 @@ Intelligent, semantic search powered by on-device Gemma SLM.
 - [ ] Gemma model runs on-device without network
 - [ ] Graceful fallback to fuzzy matching
 
-### F5: Media Control Hub ⬜
+### F5: Media Control Hub 🟡
 
 Built-in media controls, not a widget. Part of the launcher's native UI.
 
