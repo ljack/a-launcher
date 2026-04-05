@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.alauncher.data.model.AppPosition
+import com.alauncher.data.model.GravityScore
 import com.alauncher.data.model.LauncherApp
 import com.alauncher.data.repository.AppRepository
 import com.alauncher.data.repository.UsageRepository
@@ -17,11 +17,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.cos
-import kotlin.math.sin
 
 data class HomeUiState(
     val apps: List<LauncherApp> = emptyList(),
+    val gravityScores: Map<String, GravityScore> = emptyMap(),
     val isLoading: Boolean = true,
 )
 
@@ -39,8 +38,15 @@ class HomeViewModel @Inject constructor(
         _isLoading,
     ) { apps, loading ->
         val gravityScores = usageRepository.computeGravityScores()
-        val positionedApps = assignPositions(apps, gravityScores)
-        HomeUiState(apps = positionedApps, isLoading = loading)
+        // Sort by gravity score descending — highest gravity first
+        val sorted = apps.sortedByDescending { gravityScores[it.packageName]?.composite ?: 0f }
+        HomeUiState(
+            apps = sorted.map { app ->
+                app.copy(gravityScore = gravityScores[app.packageName]?.composite ?: 0f)
+            },
+            gravityScores = gravityScores,
+            isLoading = loading,
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -72,41 +78,5 @@ class HomeViewModel @Inject constructor(
     /** Handle an app being uninstalled. */
     fun onAppRemoved(packageName: String) {
         viewModelScope.launch { appRepository.onAppRemoved(packageName) }
-    }
-
-    /**
-     * Assign spatial positions to apps based on gravity scores.
-     * High-gravity apps go near center, others spiral outward.
-     */
-    private fun assignPositions(
-        apps: List<LauncherApp>,
-        gravityScores: Map<String, com.alauncher.data.model.GravityScore>,
-    ): List<LauncherApp> {
-        // Sort by gravity score descending
-        val sorted = apps.sortedByDescending { gravityScores[it.packageName]?.composite ?: 0f }
-
-        val centerX = 540f // Will be dynamic based on screen size
-        val centerY = 960f
-
-        return sorted.mapIndexed { index, app ->
-            val score = gravityScores[app.packageName]?.composite ?: 0f
-            // Spiral layout: higher gravity = closer to center
-            val ring = index / 8 // 8 apps per ring
-            val angleInRing = (index % 8) * (Math.PI * 2 / 8)
-            val radius = 80f + ring * 100f // Inner ring at 80dp, expanding outward
-
-            val x = centerX + (radius * cos(angleInRing)).toFloat() - 32f
-            val y = centerY + (radius * sin(angleInRing)).toFloat() - 32f
-
-            app.copy(
-                gravityScore = score,
-                position = AppPosition(
-                    x = x,
-                    y = y,
-                    homeX = x,
-                    homeY = y,
-                ),
-            )
-        }
     }
 }
