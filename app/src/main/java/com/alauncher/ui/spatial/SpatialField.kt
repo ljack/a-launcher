@@ -176,19 +176,21 @@ fun SpatialField(
                                     val zoom = event.calculateZoom()
                                     val pan = event.calculatePan()
 
-                                    // If magnify is active, pinch adjusts magnification
-                                    if (mag != null && mag.active && zoom in 0.5f..2.0f) {
-                                        mag.adjustMagnification(zoom)
-                                        if (mag.magnification <= 1.5f) {
-                                            mag.dismiss()
-                                        }
+                                    // Check if pinch centroid is inside the magnify lens
+                                    val centroid = event.calculateCentroid()
+                                    val pinchInsideLens = mag != null && mag.active &&
+                                        mag.isInsideLens(centroid)
+
+                                    if (pinchInsideLens && mag != null && zoom in 0.5f..2.0f) {
+                                        // Pinch inside lens: adjust magnification + size
+                                        mag.adjustWithPinch(zoom)
                                         gestureStarted = true
+                                        magnifyActivated = true
                                         pointers.forEach { it.consume() }
                                     } else if (zoom in 0.5f..2.0f) {
                                         val oldScale = scale
                                         val newScale = (oldScale * zoom).coerceIn(0.2f, 5f)
                                         val scaleDelta = newScale / oldScale
-                                        val centroid = event.calculateCentroid()
                                         val cx = fieldSize.width / 2f
                                         val cy = fieldSize.height / 2f
                                         panOffset = Offset(

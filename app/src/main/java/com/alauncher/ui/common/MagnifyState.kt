@@ -24,11 +24,16 @@ class MagnifyState {
     /** Whether the user is currently dragging the lens */
     var dragging by mutableStateOf(false)
 
-    /** Lens radius in pixels (set from dp conversion) */
-    var radiusPx by mutableFloatStateOf(250f)
+    /** Lens radius in pixels */
+    var radiusPx by mutableFloatStateOf(330f)
+
+    /** Base radius (before pinch-resize) */
+    private val baseRadiusPx = 330f
+    private val minRadiusPx = 200f
+    private val maxRadiusPx = 550f
 
     /** Y offset above the finger */
-    var fingerOffsetY by mutableFloatStateOf(-160f)
+    var fingerOffsetY by mutableFloatStateOf(-180f)
 
     fun activate(fingerPos: Offset) {
         center = Offset(fingerPos.x, fingerPos.y + fingerOffsetY)
@@ -42,16 +47,28 @@ class MagnifyState {
 
     fun release() {
         dragging = false
-        // Lens stays visible at last position
     }
 
     fun dismiss() {
         active = false
         dragging = false
+        // Reset to defaults for next activation
+        magnification = 2.5f
+        radiusPx = baseRadiusPx
     }
 
-    fun adjustMagnification(zoomDelta: Float) {
-        magnification = (magnification * zoomDelta).coerceIn(1.5f, 4f)
+    /** Returns true if the given point is inside the lens circle */
+    fun isInsideLens(point: Offset): Boolean {
+        if (!active) return false
+        val dx = point.x - center.x
+        val dy = point.y - center.y
+        return (dx * dx + dy * dy) <= radiusPx * radiusPx
+    }
+
+    /** Adjust both magnification and lens size with pinch */
+    fun adjustWithPinch(zoomDelta: Float) {
+        magnification = (magnification * zoomDelta).coerceIn(1.5f, 5f)
+        radiusPx = (radiusPx * zoomDelta).coerceIn(minRadiusPx, maxRadiusPx)
     }
 }
 
