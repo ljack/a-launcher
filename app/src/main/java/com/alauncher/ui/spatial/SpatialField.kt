@@ -1,21 +1,20 @@
 package com.alauncher.ui.spatial
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -35,16 +35,28 @@ import com.alauncher.data.model.LauncherApp
 import com.alauncher.ui.theme.OrbGlow
 import com.alauncher.ui.theme.OrbGlowSecondary
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
+ * Computed position for an app orb in the spatial field.
+ */
+private data class OrbPos(
+    val rawX: Float,
+    val rawY: Float,
+    val ring: Int,
+)
+
+/**
  * The main spatial field composable.
  * Renders apps in a golden-angle spiral centered on the screen.
  * Includes animated connection lines between nearby apps.
- * Supports pan and zoom gestures.
+ *
+ * All gestures (pan, zoom, tap) handled in one unified pointer input
+ * to avoid conflicts between parent transform and child tap handlers.
  */
 @Composable
 fun SpatialField(
@@ -55,12 +67,6 @@ fun SpatialField(
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
-
-    // Animate scale for smooth zoom
-    val animatedScale = remember { Animatable(1f) }
-    LaunchedEffect(scale) {
-        animatedScale.animateTo(scale, spring(stiffness = Spring.StiffnessMediumLow))
-    }
 
     // Subtle breathing animation
     val infiniteTransition = rememberInfiniteTransition(label = "breathe")
@@ -74,75 +80,141 @@ fun SpatialField(
         label = "breathe",
     )
 
-    // Pre-compute positions for connection lines
+    // Pre-compute raw positions (before pan/zoom transform)
     val goldenAngle = PI * (3.0 - sqrt(5.0))
     val orbSizePx = 220f
     val spreadFactor = orbSizePx * 0.85f
+
+    val rawPositions = remember(apps.size) {
+        apps.mapIndexed { index, _ ->
+            val angle = index * goldenAngle
+            val radius = spreadFactor * sqrt((index + 1).toFloat())
+            OrbPos(
+                rawX = (radius * cos(angle)).toFloat(),
+                rawY = (radius * sin(angle)).toFloat(),
+                ring = index / 8,
+            )
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { fieldSize = it }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(0.2f, 4f)
-                    panOffset += pan
+            .pointerInput(apps) {
+                awaitEachGesture {
+                    val firstDown = awaitFirstDown(requireUnconsumed = false)
+                    val downPos = firstDown.position
+                    var totalPan = Offset.Zero
+                    var totalZoom = 1f
+                    var gestureStarted = false
+                    var isMultiTouch = false
+
+                    // Track movement to distinguish tap from drag
+                    do {
+                        val event = awaitPointerEvent()
+                        val pointers = event.changes
+
+                        if (pointers.size >= 2) {
+                            isMultiTouch = true
+                        }
+
+                        if (isMultiTouch) {
+                            // Pinch-to-zoom + pan
+                            val zoom = event.calculateZoom()
+                            val pan = event.calculatePan()
+
+                            val newScale = (scale * zoom).coerceIn(0.15f, 5f)
+                            scale = newScale
+                            panOffset += pan
+
+                            gestureStarted = true
+                            pointers.forEach { it.consume() }
+                        } else if (pointers.size == 1) {
+                            val change = pointers[0]
+                            val dragDelta = change.position - downPos
+                            totalPan += event.calculatePan()
+
+                            // Start panning after small threshold
+                            if (abs(dragDelta.x) > 15f || abs(dragDelta.y) > 15f) {
+                                gestureStarted = true
+                            }
+
+                            if (gestureStarted) {
+                                panOffset += event.calculatePan()
+                                change.consume()
+                            }
+                        }
+                    } while (pointers.any { it.pressed })
+
+                    // If minimal movement and single touch → it's a tap
+                    if (!gestureStarted && !isMultiTouch && fieldSize.width > 0) {
+                        // Hit-test: find which app was tapped
+                        val centerX = fieldSize.width / 2f
+                        val centerY = fieldSize.height / 2f
+                        val tapX = downPos.x
+                        val tapY = downPos.y
+
+                        val hitRadius = orbSizePx * scale * 0.4f
+
+                        for (i in rawPositions.indices) {
+                            val pos = rawPositions[i]
+                            val sx = (pos.rawX) * scale + centerX + panOffset.x
+                            val sy = (pos.rawY) * scale + centerY + panOffset.y
+                            val dist = hypot(tapX - sx, tapY - sy)
+                            if (dist < hitRadius && i < apps.size) {
+                                onAppTap(apps[i])
+                                break
+                            }
+                        }
+                    }
                 }
             }
     ) {
         if (fieldSize.width > 0 && fieldSize.height > 0) {
             val centerX = fieldSize.width / 2f
             val centerY = fieldSize.height / 2f
-            val currentScale = animatedScale.value
+            val currentScale = scale
 
-            // Compute all positions once
-            data class OrbPos(val x: Float, val y: Float, val screenX: Float, val screenY: Float, val ring: Int)
-
-            val positions = remember(apps.size, currentScale, panOffset, fieldSize) {
-                apps.mapIndexed { index, _ ->
-                    val angle = index * goldenAngle
-                    val radius = spreadFactor * sqrt((index + 1).toFloat())
-                    val rawX = centerX + (radius * cos(angle)).toFloat()
-                    val rawY = centerY + (radius * sin(angle)).toFloat()
-                    val sx = (rawX - centerX) * currentScale + centerX + panOffset.x
-                    val sy = (rawY - centerY) * currentScale + centerY + panOffset.y
-                    OrbPos(rawX, rawY, sx, sy, ring = index / 8)
-                }
+            // Compute screen positions
+            val screenPositions = rawPositions.map { pos ->
+                Offset(
+                    x = pos.rawX * currentScale + centerX + panOffset.x,
+                    y = pos.rawY * currentScale + centerY + panOffset.y,
+                )
             }
 
             // Draw connection lines between nearby apps
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val connectionDistance = 250f * currentScale
-                val maxConnections = 80 // limit for performance
+                val maxConnections = 80
 
                 var connectionCount = 0
-                for (i in positions.indices) {
+                for (i in screenPositions.indices) {
                     if (connectionCount >= maxConnections) break
-                    val a = positions[i]
-                    // Only draw connections for visible orbs
-                    if (a.screenX < -100 || a.screenX > size.width + 100 ||
-                        a.screenY < -100 || a.screenY > size.height + 100
+                    val a = screenPositions[i]
+                    if (a.x < -100 || a.x > size.width + 100 ||
+                        a.y < -100 || a.y > size.height + 100
                     ) continue
 
-                    for (j in (i + 1) until minOf(positions.size, i + 12)) {
+                    for (j in (i + 1) until minOf(screenPositions.size, i + 12)) {
                         if (connectionCount >= maxConnections) break
-                        val b = positions[j]
-                        val dist = hypot(a.screenX - b.screenX, a.screenY - b.screenY)
+                        val b = screenPositions[j]
+                        val dist = hypot(a.x - b.x, a.y - b.y)
                         if (dist < connectionDistance) {
                             val alpha = (1f - dist / connectionDistance) * 0.12f
-                            // Breathing pulse: connections gently pulse
-                            val pulseAlpha = alpha * (0.7f + 0.3f * sin(breathe * 2 * PI.toFloat() + i * 0.5f).toFloat())
+                            val pulseAlpha = alpha * (0.7f + 0.3f * sin(breathe * 2 * PI.toFloat() + i * 0.5f))
                             drawLine(
                                 brush = Brush.linearGradient(
                                     colors = listOf(
                                         OrbGlow.copy(alpha = pulseAlpha),
                                         OrbGlowSecondary.copy(alpha = pulseAlpha),
                                     ),
-                                    start = Offset(a.screenX, a.screenY),
-                                    end = Offset(b.screenX, b.screenY),
+                                    start = a,
+                                    end = b,
                                 ),
-                                start = Offset(a.screenX, a.screenY),
-                                end = Offset(b.screenX, b.screenY),
+                                start = a,
+                                end = b,
                                 strokeWidth = 1.5f,
                                 blendMode = BlendMode.Screen,
                             )
@@ -153,11 +225,14 @@ fun SpatialField(
             }
 
             // Draw orbs
-            positions.forEachIndexed { index, pos ->
+            rawPositions.forEachIndexed { index, pos ->
+                if (index >= apps.size) return@forEachIndexed
                 val app = apps[index]
+                val screenPos = screenPositions[index]
                 val margin = orbSizePx * currentScale * 2
-                if (pos.screenX > -margin && pos.screenX < fieldSize.width + margin &&
-                    pos.screenY > -margin && pos.screenY < fieldSize.height + margin
+
+                if (screenPos.x > -margin && screenPos.x < fieldSize.width + margin &&
+                    screenPos.y > -margin && screenPos.y < fieldSize.height + margin
                 ) {
                     Layout(
                         content = {
@@ -170,15 +245,10 @@ fun SpatialField(
                         },
                         modifier = Modifier
                             .graphicsLayer {
-                                translationX = pos.screenX - orbSizePx / 2f
-                                translationY = pos.screenY - orbSizePx / 2f
+                                translationX = screenPos.x - orbSizePx / 2f
+                                translationY = screenPos.y - orbSizePx / 2f
                                 scaleX = currentScale
                                 scaleY = currentScale
-                            }
-                            .pointerInput(app.packageName) {
-                                detectTapGestures(
-                                    onTap = { onAppTap(app) }
-                                )
                             }
                     ) { measurables, constraints ->
                         val placeables = measurables.map { it.measure(constraints) }

@@ -15,7 +15,7 @@
 
 ## Features
 
-### F1: Spatial App Field ⬜
+### F1: Spatial App Field 🟡
 
 The home screen displays apps as visual elements floating in a spatial field over the user's wallpaper.
 
@@ -151,7 +151,7 @@ Notifications that don't disappear until the user explicitly dismisses them.
 - [ ] Manual dismiss required
 - [ ] Badge indicators visible on app orbs in spatial field
 
-### F7: Usage Gravity Engine ⬜
+### F7: Usage Gravity Engine 🟡
 
 The system that determines app positions based on usage patterns.
 
@@ -172,7 +172,7 @@ The system that determines app positions based on usage patterns.
 - [ ] New apps appear at periphery
 - [ ] Position history persists across restarts
 
-### F8: Launcher Activity & System Integration ⬜
+### F8: Launcher Activity & System Integration ✅
 
 The foundational Android launcher behavior.
 
