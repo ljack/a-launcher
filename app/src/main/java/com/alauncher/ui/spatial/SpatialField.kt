@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
@@ -120,13 +121,26 @@ fun SpatialField(
                         }
 
                         if (isMultiTouch) {
-                            // Pinch-to-zoom + pan
+                            // Pinch-to-zoom anchored to pinch centroid + pan
                             val zoom = event.calculateZoom()
                             val pan = event.calculatePan()
+                            val centroid = event.calculateCentroid()
 
-                            val newScale = (scale * zoom).coerceIn(0.15f, 5f)
+                            val oldScale = scale
+                            val newScale = (oldScale * zoom).coerceIn(0.15f, 5f)
+
+                            // Adjust pan so zoom is anchored to the pinch center point
+                            // This keeps the content under your fingers stationary
+                            val centerX = fieldSize.width / 2f
+                            val centerY = fieldSize.height / 2f
+                            val focusX = centroid.x - centerX - panOffset.x
+                            val focusY = centroid.y - centerY - panOffset.y
+                            panOffset += Offset(
+                                x = focusX * (1f - zoom),
+                                y = focusY * (1f - zoom),
+                            ) + pan
+
                             scale = newScale
-                            panOffset += pan
 
                             gestureStarted = true
                             pointers.forEach { it.consume() }
