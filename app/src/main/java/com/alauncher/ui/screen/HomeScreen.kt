@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.alauncher.ui.common.AquaZone
+import com.alauncher.ui.common.MagnifyAppBar
 import com.alauncher.ui.common.WaveEdge
 import com.alauncher.ui.common.createMagnifyEffect
 import com.alauncher.ui.common.createRefractionEffect
@@ -158,6 +159,22 @@ fun HomeScreen(
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
+
+                // Magnify app name bar (above search)
+                MagnifyAppBar(
+                    appLabel = magnifyState.highlightedAppLabel,
+                    visible = magnifyState.active && magnifyState.highlightedAppLabel != null,
+                    onLaunch = {
+                        val pkg = magnifyState.highlightedAppPackage
+                        if (pkg != null) {
+                            val app = uiState.apps.find { it.packageName == pkg }
+                            if (app != null) {
+                                viewModel.launchApp(app)
+                                magnifyState.dismiss()
+                            }
+                        }
+                    },
+                )
 
                 AquaZone(
                     waveEdge = WaveEdge.Top,

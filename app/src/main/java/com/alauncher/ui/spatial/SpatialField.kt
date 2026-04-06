@@ -259,6 +259,13 @@ fun SpatialField(
                                         }
                                     }
                                     mag.highlightedAppIndex = bestIdx
+                                    if (bestIdx >= 0 && bestIdx < apps.size) {
+                                        mag.highlightedAppLabel = apps[bestIdx].label
+                                        mag.highlightedAppPackage = apps[bestIdx].packageName
+                                    } else {
+                                        mag.highlightedAppLabel = null
+                                        mag.highlightedAppPackage = null
+                                    }
                                     change.consume()
                                 } else if (!magnifyActivated) {
                                     // Normal pan

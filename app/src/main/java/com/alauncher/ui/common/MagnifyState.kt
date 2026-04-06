@@ -30,6 +30,10 @@ class MagnifyState {
     /** Screen position of the highlighted app (for drawing the indicator) */
     var highlightedAppPos by mutableStateOf(Offset.Zero)
 
+    /** Label + package of the highlighted app (for the name display bar) */
+    var highlightedAppLabel by mutableStateOf<String?>(null)
+    var highlightedAppPackage by mutableStateOf<String?>(null)
+
     /** Lens radius in pixels */
     var radiusPx by mutableFloatStateOf(550f)
 
@@ -53,15 +57,25 @@ class MagnifyState {
 
     fun release() {
         dragging = false
-        highlightedAppIndex = -1
+        // Keep highlight visible so user can tap the name bar
     }
 
     fun dismiss() {
         active = false
         dragging = false
+        highlightedAppIndex = -1
+        highlightedAppLabel = null
+        highlightedAppPackage = null
         // Reset to defaults for next activation
         magnification = 2.5f
         radiusPx = baseRadiusPx
+    }
+
+    fun clearHighlight() {
+        highlightedAppIndex = -1
+        highlightedAppLabel = null
+        highlightedAppPackage = null
+        highlightedAppPos = Offset.Zero
     }
 
     /** Returns true if the given point is inside the lens circle */
